@@ -5,18 +5,29 @@ import globalState from '../globalState';
 import { LeekTreeItem } from '../shared/leekTreeItem';
 import { executeStocksRemind } from '../shared/remindNotification';
 import { HeldData } from '../shared/typed';
-import { calcFixedPriceNumber, events, formatNumber, randHeader, sortData } from '../shared/utils';
+import {
+  calcFixedPriceNumber,
+  events,
+  formatDate,
+  formatNumber,
+  randHeader,
+  sortData,
+} from '../shared/utils';
 import { getXueQiuToken } from '../shared/xueqiu-helper';
 import { LeekService } from './leekService';
 import moment = require('moment');
 import momentTz = require('moment-timezone');
 import Log from '../shared/log';
 import { getTencentHKStockData, searchStockList } from '../shared/tencentStock';
+import { fetchRecentQfqTradeDataForAi } from '../shared/aiStockHistoryData';
 
 export default class StockService extends LeekService {
   public stockList: Array<LeekTreeItem> = [];
   private context: ExtensionContext;
   private token: string = '';
+  private stockMaCache: Record<string, { date: string; ma5: string; ma10: string; ma20: string }> =
+    {};
+  private stockMaTaskMap: Record<string, Promise<void>> = {};
 
   constructor(context: ExtensionContext) {
     super();
@@ -86,6 +97,107 @@ export default class StockService extends LeekService {
     events.emit('updateBar:stock-profit-refresh', this);
     events.emit('stockListUpdate', this.stockList, oldStockList);
     return res;
+  }
+
+  private needStockMaData() {
+    const stockLabelTemplate =
+      globalState.labelFormat?.['sidebarStockLabelFormat'] ||
+      '${icon|padRight|4}${percent|padRight|11}${price|padRight|15}「${name}」';
+    const hasMaPlaceholders = /\$\{\s*ma(5|10|20)\s*(\||\})/i.test(stockLabelTemplate);
+    return globalState.stockMaLineValueShow || hasMaPlaceholders;
+  }
+
+  private fillStockMALine(stockItem: any) {
+    stockItem.ma5 = '--';
+    stockItem.ma10 = '--';
+    stockItem.ma20 = '--';
+
+    if (!this.needStockMaData()) {
+      return;
+    }
+    const stockCode = String(stockItem.code || '').toLowerCase();
+    if (!/^(sh|sz|bj|hk)/.test(stockCode)) {
+      return;
+    }
+    const today = formatDate(new Date());
+    const cache = this.stockMaCache[stockCode];
+    if (cache && cache.date === today) {
+      stockItem.ma5 = cache.ma5;
+      stockItem.ma10 = cache.ma10;
+      stockItem.ma20 = cache.ma20;
+      return;
+    }
+    this.asyncFetchStockMALine(stockCode);
+  }
+
+  private async asyncFetchStockMALine(stockCode: string) {
+    const today = formatDate(new Date());
+    const cache = this.stockMaCache[stockCode];
+    if (cache && cache.date === today) {
+      return;
+    }
+    if (this.stockMaTaskMap[stockCode]) {
+      return;
+    }
+    this.stockMaTaskMap[stockCode] = this.fetchStockMALine(stockCode)
+      .then((maLineData) => {
+        if (!maLineData) {
+          return;
+        }
+        this.stockMaCache[stockCode] = {
+          date: today,
+          ...maLineData,
+        };
+      })
+      .catch((err) => {
+        Log.info('fetchStockMALine error', stockCode, err);
+      })
+      .finally(() => {
+        delete this.stockMaTaskMap[stockCode];
+      });
+    await this.stockMaTaskMap[stockCode];
+  }
+
+  private async fetchStockMALine(stockCode: string) {
+    const { text } = await fetchRecentQfqTradeDataForAi(stockCode, '3m');
+    return this.parseStockMALineFromCSV(text);
+  }
+
+  private parseStockMALineFromCSV(csvText: string) {
+    if (!csvText) {
+      return null;
+    }
+    const rows = csvText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => !!line && !line.startsWith('日期'))
+      .map((line) => line.split(','))
+      .filter((segments) => segments.length >= 3)
+      .map((segments) => ({
+        date: segments[0].trim(),
+        close: Number(segments[2]),
+      }))
+      .filter((item) => item.date && !isNaN(item.close));
+
+    if (!rows.length) {
+      return null;
+    }
+    rows.sort((a, b) => a.date.localeCompare(b.date));
+    const closes = rows.map((item) => item.close);
+    const calcMA = (days: number) => {
+      if (closes.length < days) {
+        return '--';
+      }
+      const list = closes.slice(-days);
+      const sum = list.reduce((acc, val) => acc + val, 0);
+      return formatNumber(sum / days, 2, false);
+    };
+
+    return {
+      ma5: calcMA(5),
+      ma10: calcMA(10),
+      ma20: calcMA(20),
+    };
   }
 
   async getStockData(codes: Array<string>): Promise<Array<LeekTreeItem>> {
@@ -462,6 +574,7 @@ export default class StockService extends LeekService {
               hfStockCount += 1;
             }
             if (stockItem) {
+              this.fillStockMALine(stockItem);
               const { yestclose, open } = stockItem;
               let { price } = stockItem;
               /*  if (open === price && price === '0.00') {
