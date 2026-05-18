@@ -87,6 +87,9 @@ export interface FundInfo {
   heldPrice?: number; // 持仓价
   todayHeldPrice?: number; // 当日持仓价
   isSellOut?: boolean; // 是否清仓
+  ma5?: string; // 5日均线
+  ma10?: string; // 10日均线
+  ma20?: string; // 20日均线
 }
 
 export const defaultFundInfo: FundInfo = {

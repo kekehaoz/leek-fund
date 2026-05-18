@@ -248,6 +248,8 @@ function setGlobalVariable() {
   globalState.iconType = LeekFundConfig.getConfig('leek-fund.iconType') || 'arrow';
 
   globalState.stockHeldTipShow = LeekFundConfig.getConfig('leek-fund.stockHeldTipShow') ?? true;
+  globalState.stockMaLineValueShow =
+    LeekFundConfig.getConfig('leek-fund.stockMaLineValueShow') ?? false;
 
   const stocksRemind = LeekFundConfig.getConfig('leek-fund.stocksRemind') || {};
   cacheStocksRemindData(stocksRemind);

@@ -604,6 +604,11 @@
           "default": false,
           "description": "是否开启股票持仓提示"
         },
+        "leek-fund.stockMaLineValueShow": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否在股票侧边栏显示 MA5/MA10/MA20 均线值"
+        },
         "leek-fund.funds": {
           "type": "array",
           "default": [

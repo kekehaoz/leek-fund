@@ -49,6 +49,9 @@ export class LeekTreeItem extends TreeItem {
       publishDateTime = '',
       heldAmount = 0,
       heldPrice = 0,
+      ma5 = '--',
+      ma10 = '--',
+      ma20 = '--',
     } = info;
 
     if (_itemType) {
@@ -128,6 +131,10 @@ export class LeekTreeItem extends TreeItem {
       /* `showLabel: true` */
       if (isStockItem) {
         const risePercent = isStop ? '停牌' : `${_percent}%`;
+        const stockLabelTemplate =
+          globalState.labelFormat?.['sidebarStockLabelFormat'] ??
+          DEFAULT_LABEL_FORMAT.sidebarStockLabelFormat;
+        const hasMaPlaceholders = /\$\{\s*ma(5|10|20)\s*(\||\})/i.test(stockLabelTemplate);
         if (type === 'nodata') {
           text = info.name;
         } else {
@@ -136,14 +143,19 @@ export class LeekTreeItem extends TreeItem {
             15
           )}「${name}」`; */
           text = formatLabelString(
-            globalState.labelFormat?.['sidebarStockLabelFormat'] ??
-              DEFAULT_LABEL_FORMAT.sidebarStockLabelFormat,
+            stockLabelTemplate,
             {
               ...info,
               icon: !isIconPath ? iconPath : '',
               percent: risePercent,
+              ma5,
+              ma10,
+              ma20,
             }
           );
+          if (globalState.stockMaLineValueShow && !hasMaPlaceholders) {
+            text += ` MA5:${ma5} MA10:${ma10} MA20:${ma20}`;
+          }
         }
       } else if (isFundItem) {
         /* text =
