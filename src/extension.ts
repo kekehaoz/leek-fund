@@ -112,7 +112,11 @@ export async function activate(context: ExtensionContext) {
       fundService.getData(value, SortType.NORMAL, `fundGroup_${index}`);
     });
 
-    stockService.getData(LeekFundConfig.getConfig('leek-fund.stocks'), SortType.NORMAL);
+    // 合并股票和板块代码，确保板块数据也被获取
+    const stockCodes = LeekFundConfig.getConfig('leek-fund.stocks') || [];
+    const sectorCodes = LeekFundConfig.getConfig('leek-fund.sectorIndices') || [];
+    const allCodes = [...stockCodes, ...sectorCodes];
+    stockService.getData(allCodes, SortType.NORMAL);
   };
 
   manualRequest();
