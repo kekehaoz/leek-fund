@@ -35,16 +35,21 @@ function toSohuCode(stockId: string): string | null {
   return null;
 }
 
-/** 腾讯 fqkline 港股代码：数字部分补足 5 位小写 hk00700，指数等字母后缀为大写 hkHSI */
-function normalizeTencentHkSymbol(stockId: string): string | null {
+/** 腾讯 fqkline 代码规范化：港股数字部分补足5位，A股直接用 sh/sz 前缀 */
+function normalizeTencentSymbol(stockId: string): string | null {
+  if (!stockId || stockId.length < 3) return null;
   const lower = stockId.toLowerCase();
-  if (!lower.startsWith('hk') || stockId.length < 3) return null;
-  const suffix = stockId.slice(2);
-  if (/^\d+$/.test(suffix)) {
-    return `hk${suffix.padStart(5, '0')}`;
+  if (lower.startsWith('sh') || lower.startsWith('sz')) {
+    return lower;
   }
-  if (suffix.length > 0) {
-    return `hk${suffix.toUpperCase()}`;
+  if (lower.startsWith('hk')) {
+    const suffix = stockId.slice(2);
+    if (/^\d+$/.test(suffix)) {
+      return `hk${suffix.padStart(5, '0')}`;
+    }
+    if (suffix.length > 0) {
+      return `hk${suffix.toUpperCase()}`;
+    }
   }
   return null;
 }
@@ -79,14 +84,15 @@ async function fetchTencentHkQfqText(
   endYmd: string,
   range: string
 ): Promise<string> {
-  const sym = normalizeTencentHkSymbol(stockId);
+  const sym = normalizeTencentSymbol(stockId);
   if (!sym) return '';
   const maxBars = rangeToMaxBars(range);
   const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${encodeURIComponent(
-    `${sym},day,${startYmd},${endYmd},${maxBars},qfq`
+    `${sym},day,${startYmd},${endYmd},${maxBars},`
   )}`;
   const res = await axios.get(url, { responseType: 'json' });
-  const day = res.data?.data?.[sym]?.day;
+  const symData = res.data?.data?.[sym];
+  const day = symData?.day;
   if (!Array.isArray(day) || !day.length) return '';
   const lines = ['日期,开盘,收盘,最高,最低,成交量'];
   for (const row of day) {
@@ -97,7 +103,53 @@ async function fetchTencentHkQfqText(
 }
 
 /**
- * AI 个股分析用的前复权日线文本：A 股走搜狐，港股走腾讯（与扩展内港股行情同源）。
+ * 东方财富美股日K接口。secid 格式：105.TICKER（NASDAQ）或 106.TICKER（NYSE）。
+ * 先尝试 105，若无数据再试 106。
+ */
+async function fetchEastMoneyUsText(
+  ticker: string,
+  startYmd: string,
+  endYmd: string,
+  range: string
+): Promise<string> {
+  const maxBars = rangeToMaxBars(range) + 10; // 多取几条保证 MA30 有足够数据
+  const beg = startYmd.replace(/-/g, '');
+  const end = endYmd.replace(/-/g, '');
+
+  const tryFetch = async (mktNum: number): Promise<string> => {
+    const secid = `${mktNum}.${ticker.toUpperCase()}`;
+    const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get`;
+    const res = await axios.get(url, {
+      params: { secid, fields1: 'f1,f2,f3,f4,f5', fields2: 'f51,f52,f53,f54,f55,f56', klt: 101, fqt: 1, beg, end, lmt: maxBars },
+      headers: { Referer: 'https://finance.eastmoney.com/', 'User-Agent': 'Mozilla/5.0' },
+      timeout: 8000,
+    });
+    const klines: string[] = res.data?.data?.klines || [];
+    if (!klines.length) return '';
+    // 东方财富格式: "日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率"
+    const lines = ['日期,开盘,收盘,最高,最低,成交量'];
+    for (const row of klines) {
+      const parts = row.split(',');
+      if (parts.length < 6) continue;
+      lines.push(`${parts[0]},${parts[1]},${parts[2]},${parts[3]},${parts[4]},${parts[5]}`);
+    }
+    return lines.join('\n');
+  };
+
+  // NASDAQ(105) 优先，失败或无数据再试 NYSE(106)
+  try {
+    const text = await tryFetch(105);
+    if (text) return text;
+  } catch (_) {}
+  try {
+    return await tryFetch(106);
+  } catch (_) {}
+  return '';
+}
+
+/**
+ * 获取日线行情文本，用于计算 MA 均线。
+ * A股/港股走腾讯接口，美股走东方财富接口。
  */
 export async function fetchRecentQfqTradeDataForAi(
   stockId: string,
@@ -111,9 +163,15 @@ export async function fetchRecentQfqTradeDataForAi(
   const endCompact = endYmd.replace(/-/g, '');
 
   const lower = stockId.toLowerCase();
-  if (lower.startsWith('hk')) {
+  if (lower.startsWith('hk') || lower.startsWith('sh') || lower.startsWith('sz')) {
     const text = await fetchTencentHkQfqText(stockId, startYmd, endYmd, range);
-    return { text, sourceLabel: '腾讯财经（港股前复权日线）' };
+    return { text, sourceLabel: '腾讯财经（日线）' };
+  }
+
+  if (lower.startsWith('usr_')) {
+    const ticker = stockId.slice(4); // 去掉 usr_ 前缀
+    const text = await fetchEastMoneyUsText(ticker, startYmd, endYmd, range);
+    return { text, sourceLabel: '东方财富（美股日线）' };
   }
 
   const text = await fetchSohuQfqText(stockId, startCompact, endCompact);

@@ -6,7 +6,7 @@ export const DEFAULT_LABEL_FORMAT = {
   sidebarBinanceLabelFormat:
     '${icon|padRight|4}${percent|padRight|11}${price|padRight|15}「${name}」',
   sidebarStockLabelFormat:
-    '${icon|padRight|4}${percent|padRight|11}${price|padRight|15}「${name}」',
+    '${icon|padRight|4}${percent|padRight|10}${price|padRight|8}「${name}」「${ma5} ${ma5dev}」「${ma10} ${ma10dev}」「${ma20} ${ma20dev}」「${ma30} ${ma30dev}」',
   sidebarFundLabelFormat: '${icon|padRight|4}${percent|padRight}「${name}」${earnings} ${time}',
   sidebarForexLabelFormat:
     '「${name}」  现汇：${spotBuyPrice|padRight|6} / ${spotSellPrice|padRight|6}  现钞：${cashBuyPrice|padRight|6} / ${cashSellPrice|padRight|6}',

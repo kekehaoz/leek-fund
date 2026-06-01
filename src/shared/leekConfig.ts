@@ -52,9 +52,8 @@ export class BaseConfig {
     const sourceCfg = this.getGlobalConfigArray(cfgKey);
     const newCfg = sourceCfg.filter((item: string) => item !== code);
     if (sourceCfg.length === newCfg.length) {
-      window.showInformationMessage(
-        `删除期货不成功。请 [点击此处](https://github.com/LeekHub/leek-fund/issues/281) 查看期货相关问题`
-      );
+      console.log(`删除不成功：代码 ${code} 不在配置 ${cfgKey} 中`);
+      console.log('当前配置：', sourceCfg);
     }
     return config.update(cfgKey, newCfg, true);
   }
@@ -166,6 +165,42 @@ export class LeekFundConfig extends BaseConfig {
     }
   }
   // Fund End
+
+  // Sector Index Begin
+  static updateSectorCfg(list: string, cb?: Function) {
+    const cfgKey = 'leek-fund.sectorIndices';
+    const config = this.getGlobalConfig();
+    const origin = this.getGlobalConfigArray(cfgKey);
+    let codes = typeof list === 'string' ? list.split(',') : list;
+    let newCodes = uniq(compact(flattenDeep(origin).concat(codes))) as string[];
+    config.update(cfgKey, newCodes, true).then(() => {
+      window.showInformationMessage(`板块指数 Successfully add.`);
+      if (cb && typeof cb === 'function') {
+        cb(codes, newCodes);
+      }
+    });
+  }
+
+  static removeSectorCfg(code: string, cb?: Function) {
+    this.removeConfig('leek-fund.sectorIndices', code).then(() => {
+      window.showInformationMessage(`板块指数 Successfully delete.`);
+      if (cb && typeof cb === 'function') {
+        cb(code);
+      }
+    });
+  }
+
+  static setSectorTopCfg(code: string, cb?: Function) {
+    let configArr: string[] = this.getConfig('leek-fund.sectorIndices');
+    configArr = [code, ...configArr.filter((item) => item !== code)];
+    this.setConfig('leek-fund.sectorIndices', configArr).then(() => {
+      window.showInformationMessage(`板块指数 successfully set to top.`);
+      if (cb && typeof cb === 'function') {
+        cb(code);
+      }
+    });
+  }
+  // Sector Index End
 
   // Stock Begin
   static updateStockCfg(list: string, cb?: Function) {

@@ -52,6 +52,11 @@ export class LeekTreeItem extends TreeItem {
       ma5 = '--',
       ma10 = '--',
       ma20 = '--',
+      ma30 = '--',
+      ma5dev = '',
+      ma10dev = '',
+      ma20dev = '',
+      ma30dev = '',
     } = info;
 
     if (_itemType) {
@@ -151,10 +156,15 @@ export class LeekTreeItem extends TreeItem {
               ma5,
               ma10,
               ma20,
+              ma30,
+              ma5dev,
+              ma10dev,
+              ma20dev,
+              ma30dev,
             }
           );
           if (globalState.stockMaLineValueShow && !hasMaPlaceholders) {
-            text += ` MA5:${ma5} MA10:${ma10} MA20:${ma20}`;
+            text += ` 「${ma5} ${ma5dev}」「${ma10} ${ma10dev}」「${ma20} ${ma20dev}」「${ma30} ${ma30dev}」`;
           }
         }
       } else if (isFundItem) {
@@ -217,18 +227,24 @@ export class LeekTreeItem extends TreeItem {
     if (isStockItem || isFundItem || isBinanceItem) {
       let typeAndSymbol = `${type}${symbol}`;
       const isFuture = /nf_/.test(code) || /hf_/.test(code);
+      const isSectorIndex = /^bk_/.test(code);
       if (isFuture) {
+        typeAndSymbol = code;
+      }
+      if (isSectorIndex) {
         typeAndSymbol = code;
       }
       this.command = {
         title: name, // 标题
         command: isStockItem
-          ? 'leek-fund.stockItemClick'
+          ? isSectorIndex
+            ? 'leek-fund.sectorItemClick'
+            : 'leek-fund.stockItemClick'
           : isBinanceItem
           ? 'leek-fund.binanceItemClick'
           : 'leek-fund.fundItemClick', // 命令 ID
         arguments: [
-          isStockItem ? '0' + symbol : code, // 基金/股票编码
+          isStockItem ? (isSectorIndex ? code : '0' + symbol) : code, // 基金/股票编码
           name, // 基金/股票名称
           text,
           typeAndSymbol,

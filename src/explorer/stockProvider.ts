@@ -5,6 +5,7 @@ import { LeekTreeItem } from '../shared/leekTreeItem';
 import { defaultFundInfo, SortType, StockCategory } from '../shared/typed';
 import { LeekFundConfig } from '../shared/leekConfig';
 import StockService from './stockService';
+import { events } from '../shared/utils';
 
 export class StockProvider implements TreeDataProvider<LeekTreeItem> {
   private _onDidChangeTreeData: EventEmitter<any> = new EventEmitter<any>();
@@ -18,6 +19,8 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
   private expandUSStock: boolean;
   private expandCNFuture: boolean;
   private expandOverseaFuture: boolean;
+  private expandSectorIndustry: boolean;
+  private expandSectorConcept: boolean;
 
   constructor(service: StockService) {
     this.service = service;
@@ -27,6 +30,11 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
     this.expandUSStock = LeekFundConfig.getConfig('leek-fund.expandUSStock', false);
     this.expandCNFuture = LeekFundConfig.getConfig('leek-fund.expandCNFuture', false);
     this.expandOverseaFuture = LeekFundConfig.getConfig('leek-fund.expandOverseaFuture', false);
+    this.expandSectorIndustry = LeekFundConfig.getConfig('leek-fund.expandSectorIndustry', false);
+    this.expandSectorConcept = LeekFundConfig.getConfig('leek-fund.expandSectorConcept', false);
+    events.on('stockMaReady', () => {
+      this.refresh();
+    });
   }
 
   refresh(): any {
@@ -37,8 +45,10 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
     if (!element) {
       // Root view
       const stockCodes = LeekFundConfig.getConfig('leek-fund.stocks') || [];
+      const sectorCodes = LeekFundConfig.getConfig('leek-fund.sectorIndices') || [];
+      const allCodes = [...stockCodes, ...sectorCodes];
       // const stockList: string[] = uniq(compact(flattenDeep(stockCodes)));
-      return this.service.getData(stockCodes, this.order).then(() => {
+      return this.service.getData(allCodes, this.order).then(() => {
         return this.getRootNodes();
       });
     } else {
@@ -56,6 +66,10 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           return this.getFutureStockNodes(resultPromise);
         case StockCategory.OverseaFuture:
           return this.getOverseaFutureStockNodes(resultPromise);
+        case StockCategory.SectorIndustry:
+          return this.getSectorIndustryNodes(resultPromise);
+        case StockCategory.SectorConcept:
+          return this.getSectorConceptNodes(resultPromise);
         case StockCategory.NODATA:
           return this.getNoDataStockNodes(resultPromise);
         default:
@@ -82,7 +96,9 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           (element.id === StockCategory.HK && this.expandHKStock) ||
           (element.id === StockCategory.US && this.expandUSStock) ||
           (element.id === StockCategory.Future && this.expandCNFuture) ||
-          (element.id === StockCategory.OverseaFuture && this.expandCNFuture)
+          (element.id === StockCategory.OverseaFuture && this.expandCNFuture) ||
+          (element.id === StockCategory.SectorIndustry && this.expandSectorIndustry) ||
+          (element.id === StockCategory.SectorConcept && this.expandSectorConcept)
             ? TreeItemCollapsibleState.Expanded
             : TreeItemCollapsibleState.Collapsed,
         // iconPath: this.parseIconPathFromProblemState(element),
@@ -144,6 +160,26 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
         undefined,
         true
       ),
+      new LeekTreeItem(
+        Object.assign({ contextValue: 'sectorCategory' }, defaultFundInfo, {
+          id: StockCategory.SectorIndustry,
+          name: `行业板块${
+            globalState.sectorIndustryCount > 0 ? `(${globalState.sectorIndustryCount})` : ''
+          }`,
+        }),
+        undefined,
+        true
+      ),
+      new LeekTreeItem(
+        Object.assign({ contextValue: 'sectorCategory' }, defaultFundInfo, {
+          id: StockCategory.SectorConcept,
+          name: `概念板块${
+            globalState.sectorConceptCount > 0 ? `(${globalState.sectorConceptCount})` : ''
+          }`,
+        }),
+        undefined,
+        true
+      ),
     ];
     // 显示接口不支持的股票，避免用户老问为什么添加了股票没反应
     if (globalState.noDataStockCount) {
@@ -186,6 +222,16 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
   getOverseaFutureStockNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
     return stocks.then((res: LeekTreeItem[]) =>
       res.filter((item: LeekTreeItem) => /^(hf_)/.test(item.type || ''))
+    );
+  }
+  getSectorIndustryNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
+    return stocks.then((res: LeekTreeItem[]) =>
+      res.filter((item: LeekTreeItem) => /^(bk_industry)/.test(item.type || ''))
+    );
+  }
+  getSectorConceptNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
+    return stocks.then((res: LeekTreeItem[]) =>
+      res.filter((item: LeekTreeItem) => /^(bk_concept)/.test(item.type || ''))
     );
   }
   getNoDataStockNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {

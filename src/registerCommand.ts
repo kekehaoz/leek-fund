@@ -48,6 +48,7 @@ import setAmount from './webview/setAmount';
 import setStockPrice from './webview/setStockPrice';
 
 import stockTrend from './webview/stockTrend';
+import sectorTrend from './webview/sectorTrend';
 import stockTrendPic from './webview/stockTrendPic';
 import stockWindVane from './webview/stockWindVane';
 import tucaoForum from './webview/tucaoForum';
@@ -252,6 +253,65 @@ export function registerViewEvent(
     commands.registerCommand('leek-fund.sortStock', () => {
       stockProvider.changeOrder();
       stockProvider.refresh();
+    })
+  );
+
+  // 板块指数相关命令
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.addSectorIndex', () => {
+      const qp = window.createQuickPick();
+      qp.items = [{ label: '请输入板块关键词，如：半导体、新能源' }];
+      qp.placeholder = '搜索板块指数';
+      let code: string | undefined;
+      let timer: NodeJS.Timeout | null = null;
+      qp.onDidChangeValue((value) => {
+        qp.busy = true;
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        timer = setTimeout(async () => {
+          const res = await stockService.getSectorSuggestList(value);
+          qp.items = res;
+          qp.busy = false;
+        }, 300);
+      });
+      qp.onDidChangeSelection((e) => {
+        if (e[0].description) {
+          code = e[0].label && e[0].label.split(' | ')[0];
+        }
+      });
+      qp.show();
+      qp.onDidAccept(() => {
+        if (!code) {
+          return;
+        }
+        LeekFundConfig.updateSectorCfg(code, () => {
+          stockProvider.refresh();
+        });
+        qp.hide();
+        qp.dispose();
+      });
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.deleteSectorIndex', (target) => {
+      console.log('删除板块指数，target.id:', target.id);
+      LeekFundConfig.removeSectorCfg(target.id, () => {
+        stockProvider.refresh();
+      });
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.setSectorTop', (target) => {
+      LeekFundConfig.setSectorTopCfg(target.id, () => {
+        stockProvider.refresh();
+      });
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.sectorItemClick', (code, name, text, stockCode) => {
+      sectorTrend(code, name, stockCode);
     })
   );
 

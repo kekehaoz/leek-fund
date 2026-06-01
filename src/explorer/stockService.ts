@@ -4,7 +4,7 @@ import { ExtensionContext, QuickPickItem, window } from 'vscode';
 import globalState from '../globalState';
 import { LeekTreeItem } from '../shared/leekTreeItem';
 import { executeStocksRemind } from '../shared/remindNotification';
-import { HeldData } from '../shared/typed';
+import { HeldData, TreeItemType } from '../shared/typed';
 import {
   calcFixedPriceNumber,
   events,
@@ -20,14 +20,24 @@ import momentTz = require('moment-timezone');
 import Log from '../shared/log';
 import { getTencentHKStockData, searchStockList } from '../shared/tencentStock';
 import { fetchRecentQfqTradeDataForAi } from '../shared/aiStockHistoryData';
+import { fetchSinaSectors } from '../shared/sinaSector';
 
 export default class StockService extends LeekService {
   public stockList: Array<LeekTreeItem> = [];
   private context: ExtensionContext;
   private token: string = '';
-  private stockMaCache: Record<string, { date: string; ma5: string; ma10: string; ma20: string }> =
-    {};
-  private stockMaTaskMap: Record<string, Promise<void>> = {};
+  private stockMaCache: Record<
+    string,
+    { date: string; lastBarDate: string; ma5: number; ma10: number; ma20: number; ma30: number }
+  > = {};
+  private stockMaTaskMap: Record<string, Promise<void> | undefined> = {};
+  /** 上次拉取到的最新 K 线日期，用于判断补拉是否仍有进展 */
+  private stockMaFetchSnap: Record<string, string> = {};
+  private stockMaPendingRetry: Record<string, NodeJS.Timeout | undefined> = {};
+  private static readonly STOCK_MA_RETRY_MS = 30 * 60 * 1000;
+  // 板块指数缓存，API 失败时使用
+  private sectorIndexCache: LeekTreeItem[] = [];
+  private sectorTypeMapCache: Record<string, string> | null = null;
 
   constructor(context: ExtensionContext) {
     super();
@@ -69,9 +79,13 @@ export default class StockService extends LeekService {
 
     let stockCodes = codes.map(transFuture);
     const hkCodes: Array<string> = []; // 港股单独请求腾讯港股数据源
+    const sectorCodes: Array<string> = []; // 板块指数单独请求东方财富数据源
     stockCodes = stockCodes.filter((code) => {
       if (code.startsWith('hk')) {
         hkCodes.push('hk' + code.substring(2).toUpperCase()); // 指数去掉'hk'并转为大写，适配腾讯港股接口
+        return false;
+      } else if (code.startsWith('bk_')) {
+        sectorCodes.push(code);
         return false;
       } else {
         return true;
@@ -80,9 +94,12 @@ export default class StockService extends LeekService {
 
     let stockList: Array<LeekTreeItem> = [];
     globalState.noDataStockCount = 0; // 重置无数据股票计数
+    globalState.sectorIndustryCount = 0; // 重置行业板块计数
+    globalState.sectorConceptCount = 0; // 重置概念板块计数
     const result = await Promise.allSettled([
       this.getStockData(stockCodes),
       this.getHKStockData(hkCodes),
+      this.getSectorIndexData(sectorCodes),
     ]);
     result.forEach((item) => {
       if (item.status === 'fulfilled') {
@@ -102,7 +119,7 @@ export default class StockService extends LeekService {
   private needStockMaData() {
     const stockLabelTemplate =
       globalState.labelFormat?.['sidebarStockLabelFormat'] ||
-      '${icon|padRight|4}${percent|padRight|11}${price|padRight|15}「${name}」';
+      '${icon|padRight|4}${percent|padRight|10}${price|padRight|8}「${name}」';
     const hasMaPlaceholders = /\$\{\s*ma(5|10|20)\s*(\||\})/i.test(stockLabelTemplate);
     return globalState.stockMaLineValueShow || hasMaPlaceholders;
   }
@@ -111,29 +128,69 @@ export default class StockService extends LeekService {
     stockItem.ma5 = '--';
     stockItem.ma10 = '--';
     stockItem.ma20 = '--';
+    stockItem.ma30 = '--';
+    stockItem.ma5dev = '';
+    stockItem.ma10dev = '';
+    stockItem.ma20dev = '';
+    stockItem.ma30dev = '';
 
     if (!this.needStockMaData()) {
       return;
     }
     const stockCode = String(stockItem.code || '').toLowerCase();
-    if (!/^(sh|sz|bj|hk)/.test(stockCode)) {
+    if (!/^(sh|sz|bj|hk|usr_)/.test(stockCode)) {
       return;
     }
-    const today = formatDate(new Date());
+    const marketToday = this.getMaCalendarToday(stockCode);
     const cache = this.stockMaCache[stockCode];
-    if (cache && cache.date === today) {
-      stockItem.ma5 = cache.ma5;
-      stockItem.ma10 = cache.ma10;
-      stockItem.ma20 = cache.ma20;
+    if (cache && cache.date === marketToday) {
+      const price = Number(stockItem.price);
+      const fmt = (maVal: number) => formatNumber(maVal, 2, false);
+      const dev = (maVal: number) => {
+        if (!maVal || isNaN(price) || price <= 0) return '';
+        const d = ((price - maVal) / maVal) * 100;
+        return (d >= 0 ? '+' : '') + formatNumber(d, 2, false) + '%';
+      };
+      stockItem.ma5 = fmt(cache.ma5);
+      stockItem.ma10 = fmt(cache.ma10);
+      stockItem.ma20 = fmt(cache.ma20);
+      stockItem.ma30 = fmt(cache.ma30);
+      stockItem.ma5dev = dev(cache.ma5);
+      stockItem.ma10dev = dev(cache.ma10);
+      stockItem.ma20dev = dev(cache.ma20);
+      stockItem.ma30dev = dev(cache.ma30);
       return;
     }
-    this.asyncFetchStockMALine(stockCode);
+    void this.asyncFetchStockMALine(stockCode);
+  }
+
+  /** 各市场「当日」日历（A/港/美），避免用本地日期误判美股导致反复请求 */
+  private getMaCalendarToday(stockCode: string): string {
+    const lower = stockCode.toLowerCase();
+    if (lower.startsWith('usr_')) {
+      return momentTz().tz('America/New_York').format('YYYY-MM-DD');
+    }
+    if (lower.startsWith('hk')) {
+      return momentTz().tz('Asia/Hong_Kong').format('YYYY-MM-DD');
+    }
+    return formatDate(new Date());
+  }
+
+  private scheduleStockMaRetry(stockCode: string) {
+    if (this.stockMaPendingRetry[stockCode]) {
+      return;
+    }
+    this.stockMaPendingRetry[stockCode] = setTimeout(() => {
+      delete this.stockMaPendingRetry[stockCode];
+      delete this.stockMaCache[stockCode];
+      void this.asyncFetchStockMALine(stockCode);
+    }, StockService.STOCK_MA_RETRY_MS);
   }
 
   private async asyncFetchStockMALine(stockCode: string) {
-    const today = formatDate(new Date());
+    const marketToday = this.getMaCalendarToday(stockCode);
     const cache = this.stockMaCache[stockCode];
-    if (cache && cache.date === today) {
+    if (cache && cache.date === marketToday) {
       return;
     }
     if (this.stockMaTaskMap[stockCode]) {
@@ -144,10 +201,22 @@ export default class StockService extends LeekService {
         if (!maLineData) {
           return;
         }
+        const snapKey = `${stockCode}:${marketToday}`;
+        const prevBar = this.stockMaFetchSnap[snapKey];
+        this.stockMaFetchSnap[snapKey] = maLineData.lastBarDate;
         this.stockMaCache[stockCode] = {
-          date: today,
-          ...maLineData,
+          date: marketToday,
+          lastBarDate: maLineData.lastBarDate,
+          ma5: maLineData.ma5,
+          ma10: maLineData.ma10,
+          ma20: maLineData.ma20,
+          ma30: maLineData.ma30,
         };
+        events.emit('stockMaReady', stockCode, maLineData);
+        // 日 K 尚无「当日」：30 分钟后最多补拉一次；若 K 线日期无变化则不再重试
+        if (maLineData.lastBarDate < marketToday && maLineData.lastBarDate !== prevBar) {
+          this.scheduleStockMaRetry(stockCode);
+        }
       })
       .catch((err) => {
         Log.info('fetchStockMALine error', stockCode, err);
@@ -183,20 +252,23 @@ export default class StockService extends LeekService {
       return null;
     }
     rows.sort((a, b) => a.date.localeCompare(b.date));
+    const lastBarDate = rows[rows.length - 1].date;
     const closes = rows.map((item) => item.close);
-    const calcMA = (days: number) => {
+    const calcMA = (days: number): number => {
       if (closes.length < days) {
-        return '--';
+        return 0;
       }
       const list = closes.slice(-days);
       const sum = list.reduce((acc, val) => acc + val, 0);
-      return formatNumber(sum / days, 2, false);
+      return sum / days;
     };
 
     return {
+      lastBarDate,
       ma5: calcMA(5),
       ma10: calcMA(10),
       ma20: calcMA(20),
+      ma30: calcMA(30),
     };
   }
 
@@ -340,7 +412,7 @@ export default class StockService extends LeekService {
                   time: `${params[30]} ${params[31]}`,
                   percent: '',
                   contextValue: 'aStock',
-                ...heldData,
+                  ...heldData,
                 };
                 aStockCount += 1;
               }
@@ -703,6 +775,7 @@ export default class StockService extends LeekService {
           };
           hkStockCount += 1;
           if (stockItem) {
+            this.fillStockMALine(stockItem);
             const { yestclose, open } = stockItem;
             let { price } = stockItem;
             // 竞价阶段部分开盘和价格为0.00导致显示 -100%
@@ -855,8 +928,209 @@ export default class StockService extends LeekService {
       } catch (err) {
         Log.info('searchStockList error: ', searchText);
         console.error(err);
-        return [{ label: '股票查询失败，请重试' }];
+        return [{ label: '股票查询失败,请重试' }];
       }
+    }
+  }
+
+  // 板块指数数据获取
+  async getSectorIndexData(codes: string[]): Promise<LeekTreeItem[]> {
+    if (!codes || codes.length === 0) return [];
+    const stockList: LeekTreeItem[] = [];
+
+    // 东方财富 API 带重试
+    try {
+      const eastmoneyData = await this.fetchFromEastmoney(codes);
+      if (eastmoneyData && eastmoneyData.length > 0) {
+        const typeMap = await this.getSectorTypeMap();
+        eastmoneyData.forEach((item: any) => {
+          const bkCode = item.f12;
+          const code = `bk_${bkCode}`;
+          const name = item.f14;
+          const price = item.f2;
+          const percent = item.f3;
+          const updown = item.f4;
+          const volume = item.f5;
+          const amount = item.f6;
+          const high = item.f15;
+          const low = item.f16;
+          const open = item.f17;
+          const yestclose = item.f18;
+
+          const sectorType = typeMap[bkCode] || 'industry';
+          if (sectorType === 'concept') {
+            globalState.sectorConceptCount += 1;
+          } else {
+            globalState.sectorIndustryCount += 1;
+          }
+
+          const stockItem: any = {
+            code,
+            name,
+            price: formatNumber(price, 2, false),
+            percent: formatNumber(percent, 2, false),
+            updown: formatNumber(updown, 2, false),
+            open: formatNumber(open, 2, false),
+            yestclose: formatNumber(yestclose, 2, false),
+            high: formatNumber(high, 2, false),
+            low: formatNumber(low, 2, false),
+            volume: formatNumber(volume || 0, 2),
+            amount: formatNumber(amount || 0, 2),
+            type: sectorType === 'concept' ? 'bk_concept' : 'bk_industry',
+            contextValue: 'sectorIndex',
+            isStock: true,
+            showLabel: this.showLabel,
+            _itemType: TreeItemType.STOCK,
+          };
+          stockList.push(new LeekTreeItem(stockItem, this.context));
+        });
+
+        if (stockList.length > 0) {
+          this.sectorIndexCache = stockList;
+          return stockList;
+        }
+      }
+    } catch (err) {
+      Log.info('Eastmoney API failed, trying Sina fallback');
+    }
+
+    // 降级到新浪 API
+    try {
+      const sinaData = await this.fetchFromSina(codes);
+      if (sinaData && sinaData.length > 0) {
+        this.sectorIndexCache = sinaData;
+        return sinaData;
+      }
+    } catch (err) {
+      Log.error('Sina API fallback failed');
+    }
+
+    // 全部失败，使用缓存
+    Log.info('All sector APIs failed, using cache');
+    return this.sectorIndexCache;
+  }
+
+  // 东方财富 API 重试
+  private async fetchFromEastmoney(codes: string[]): Promise<any[] | null> {
+    const secids = codes.map((c) => `90.${c.replace('bk_', '').toUpperCase()}`).join(',');
+    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18&secids=${secids}`;
+
+    for (let i = 0; i < 3; i++) {
+      try {
+        const response = await Axios.get(url, {
+          headers: randHeader(),
+          timeout: 8000,
+        });
+        const data = response.data?.data?.diff;
+        if (data && data.length > 0) {
+          return data;
+        }
+      } catch (err) {
+        Log.info(`Eastmoney retry ${i + 1} failed`);
+      }
+    }
+    return null;
+  }
+
+  // 新浪 API 备用源
+  private async fetchFromSina(codes: string[]): Promise<LeekTreeItem[]> {
+    const sinaSectors = await fetchSinaSectors();
+    const typeMap = await this.getSectorTypeMap();
+    const stockList: LeekTreeItem[] = [];
+
+    for (const code of codes) {
+      const bkCode = code.replace('bk_', '').toUpperCase();
+      const sinaItem = sinaSectors.get(bkCode) || this.findSinaByBkCode(bkCode, sinaSectors);
+
+      if (!sinaItem) continue;
+
+      const sectorType = typeMap[bkCode] || 'industry';
+      if (sectorType === 'concept') {
+        globalState.sectorConceptCount += 1;
+      } else {
+        globalState.sectorIndustryCount += 1;
+      }
+
+      const stockItem: any = {
+        code,
+        name: sinaItem.name,
+        price: formatNumber(sinaItem.avgPrice, 2, false),
+        percent: formatNumber(sinaItem.changePercent, 2, false),
+        updown: formatNumber(sinaItem.changeAmount, 2, false),
+        open: '--',
+        yestclose: '--',
+        high: '--',
+        low: '--',
+        volume: formatNumber(sinaItem.volume || 0, 2),
+        amount: formatNumber(sinaItem.amount || 0, 2),
+        type: sectorType === 'concept' ? 'bk_concept' : 'bk_industry',
+        contextValue: 'sectorIndex',
+        isStock: true,
+        showLabel: this.showLabel,
+        _itemType: TreeItemType.STOCK,
+      };
+      stockList.push(new LeekTreeItem(stockItem, this.context));
+    }
+
+    return stockList;
+  }
+
+  // 尝试通过名称匹配新浪板块
+  private findSinaByBkCode(bkCode: string, sinaSectors: Map<string, any>): any {
+    for (const item of sinaSectors.values()) {
+      if (item.name && bkCode.toLowerCase().includes(item.name.toLowerCase())) {
+        return item;
+      }
+    }
+    return null;
+  }
+
+  // 缓存板块类型映射
+  private async getSectorTypeMap(): Promise<Record<string, string>> {
+    if (this.sectorTypeMapCache) return this.sectorTypeMapCache;
+    const map: Record<string, string> = {};
+    try {
+      // 获取概念板块列表
+      const gnUrl = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:3&fields=f12`;
+      const gnRes = await Axios.get(gnUrl, { headers: randHeader() });
+      gnRes.data?.data?.diff?.forEach((item: any) => {
+        map[item.f12] = 'concept';
+      });
+      // 行业板块默认
+      this.sectorTypeMapCache = map;
+    } catch (err) {
+      console.error('getSectorTypeMap error', err);
+      this.sectorTypeMapCache = map;
+    }
+    return map;
+  }
+
+  // 板块指数搜索
+  async getSectorSuggestList(searchText = ''): Promise<QuickPickItem[]> {
+    if (!searchText) {
+      return [{ label: '请输入板块关键词，如：半导体、新能源' }];
+    }
+    const result: QuickPickItem[] = [];
+    try {
+      const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(
+        searchText
+      )}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=10`;
+      const response = await Axios.get(url, { headers: randHeader() });
+      const data = response.data?.QuotationCodeTable?.Data;
+      if (!data) return result;
+      data.forEach((item: any) => {
+        const code = item.Code; // BK0475
+        const name = item.Name;
+        const typeName = item.SecurityTypeName || '板块';
+        result.push({
+          label: `bk_${code} | ${name}`,
+          description: typeName,
+        });
+      });
+      return result;
+    } catch (err) {
+      console.error('getSectorSuggestList error', err);
+      return [{ label: '板块查询失败，请重试' }];
     }
   }
 }

@@ -90,6 +90,11 @@ export interface FundInfo {
   ma5?: string; // 5日均线
   ma10?: string; // 10日均线
   ma20?: string; // 20日均线
+  ma30?: string; // 30日均线
+  ma5dev?: string; // MA5 偏离度
+  ma10dev?: string; // MA10 偏离度
+  ma20dev?: string; // MA20 偏离度
+  ma30dev?: string; // MA30 偏离度
 }
 
 export const defaultFundInfo: FundInfo = {
@@ -106,6 +111,8 @@ export enum StockCategory {
   HK = 'HK Stock',
   Future = 'CN Future',
   OverseaFuture = 'Oversea Future',
+  SectorIndustry = 'Industry Sector',
+  SectorConcept = 'Concept Sector',
   NODATA = 'Not Support Stock',
 }
 

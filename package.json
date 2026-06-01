@@ -236,6 +236,23 @@
         "title": "添加至状态栏"
       },
       {
+        "command": "leek-fund.addSectorIndex",
+        "title": "添加板块指数",
+        "icon": "$(add)"
+      },
+      {
+        "command": "leek-fund.deleteSectorIndex",
+        "title": "删除板块指数"
+      },
+      {
+        "command": "leek-fund.setSectorTop",
+        "title": "板块指数置顶",
+        "icon": {
+          "light": "resources/light/top.svg",
+          "dark": "resources/dark/top.svg"
+        }
+      },
+      {
         "command": "leek-fund.stockTrendPic",
         "title": "股票走势（图片版）"
       },
@@ -540,6 +557,26 @@
           "group": "group6"
         },
         {
+          "command": "leek-fund.addSectorIndex",
+          "when": "view == leekFundView.stock && viewItem == sectorCategory",
+          "group": "inline"
+        },
+        {
+          "command": "leek-fund.setSectorTop",
+          "when": "view == leekFundView.stock && viewItem == sectorIndex",
+          "group": "inline"
+        },
+        {
+          "command": "leek-fund.setSectorTop",
+          "when": "view == leekFundView.stock && viewItem == sectorIndex",
+          "group": "group1"
+        },
+        {
+          "command": "leek-fund.deleteSectorIndex",
+          "when": "view == leekFundView.stock && viewItem == sectorIndex",
+          "group": "group5"
+        },
+        {
           "command": "leek-fund.deletePair",
           "when": "view == leekFundView.binance  && viewItem != category",
           "group": "group0"
@@ -745,7 +782,7 @@
           "type": "object",
           "default": {
             "statusBarLabelFormat": "「${name}」${price}  ${icon}（${percent}）",
-            "sidebarStockLabelFormat": "${icon|padRight|4}${percent|padRight|11}${price|padRight|15}「${name}」",
+            "sidebarStockLabelFormat": "${icon|padRight|4}${percent|padRight|10}${price|padRight|8}「${name}」",
             "sidebarFundLabelFormat": "${icon|padRight|4}${percent|padRight}「${name}」${earnings} ${time}"
           },
           "description": "修改底部状态栏、侧栏的显示格式。\n"
@@ -784,6 +821,21 @@
           "type": "boolean",
           "default": false,
           "description": "默认展开海外期货"
+        },
+        "leek-fund.sectorIndices": {
+          "type": "array",
+          "default": [],
+          "description": "板块指数代码列表（建议通过界面添加）"
+        },
+        "leek-fund.expandSectorIndustry": {
+          "type": "boolean",
+          "default": false,
+          "description": "默认展开行业板块"
+        },
+        "leek-fund.expandSectorConcept": {
+          "type": "boolean",
+          "default": false,
+          "description": "默认展开概念板块"
         },
         "leek-fund.aiConfig": {
           "type": "object",
