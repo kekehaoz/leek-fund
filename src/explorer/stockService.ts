@@ -253,7 +253,15 @@ export default class StockService extends LeekService {
     }
     rows.sort((a, b) => a.date.localeCompare(b.date));
     const lastBarDate = rows[rows.length - 1].date;
-    const closes = rows.map((item) => item.close);
+
+    // MA 均线基于前几个交易日收盘价计算，不包含当天数据
+    // 盘中当天 K 线可能已包含在数据中，需排除
+    const todayStr = formatDate(new Date());
+    const historicalCloses = rows
+      .filter((r) => r.date < todayStr)
+      .map((r) => r.close);
+
+    const closes = historicalCloses.length > 0 ? historicalCloses : rows.map((r) => r.close);
     const calcMA = (days: number): number => {
       if (closes.length < days) {
         return 0;
