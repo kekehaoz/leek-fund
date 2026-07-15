@@ -2,7 +2,7 @@
   "name": "leek-fund",
   "displayName": "韭菜盒子",
   "description": "韭菜盒子，VSCode 里也可以看股票 & 基金实时数据，做最好用的投资插件",
-  "version": "3.24.0",
+  "version": "3.25.0",
   "author": "Nicky Lao <giscafer@outlook.com>",
   "repository": {
     "type": "git",
@@ -827,15 +827,10 @@
           "default": [],
           "description": "板块指数代码列表（建议通过界面添加）"
         },
-        "leek-fund.expandSectorIndustry": {
+        "leek-fund.expandSectorIndices": {
           "type": "boolean",
           "default": false,
-          "description": "默认展开行业板块"
-        },
-        "leek-fund.expandSectorConcept": {
-          "type": "boolean",
-          "default": false,
-          "description": "默认展开概念板块"
+          "description": "默认展开板块指数"
         },
         "leek-fund.aiConfig": {
           "type": "object",

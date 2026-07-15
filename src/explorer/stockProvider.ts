@@ -19,8 +19,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
   private expandUSStock: boolean;
   private expandCNFuture: boolean;
   private expandOverseaFuture: boolean;
-  private expandSectorIndustry: boolean;
-  private expandSectorConcept: boolean;
+  private expandSectorIndices: boolean;
 
   constructor(service: StockService) {
     this.service = service;
@@ -30,8 +29,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
     this.expandUSStock = LeekFundConfig.getConfig('leek-fund.expandUSStock', false);
     this.expandCNFuture = LeekFundConfig.getConfig('leek-fund.expandCNFuture', false);
     this.expandOverseaFuture = LeekFundConfig.getConfig('leek-fund.expandOverseaFuture', false);
-    this.expandSectorIndustry = LeekFundConfig.getConfig('leek-fund.expandSectorIndustry', false);
-    this.expandSectorConcept = LeekFundConfig.getConfig('leek-fund.expandSectorConcept', false);
+    this.expandSectorIndices = LeekFundConfig.getConfig('leek-fund.expandSectorIndices', false);
     events.on('stockMaReady', () => {
       this.refresh();
     });
@@ -66,10 +64,8 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           return this.getFutureStockNodes(resultPromise);
         case StockCategory.OverseaFuture:
           return this.getOverseaFutureStockNodes(resultPromise);
-        case StockCategory.SectorIndustry:
-          return this.getSectorIndustryNodes(resultPromise);
-        case StockCategory.SectorConcept:
-          return this.getSectorConceptNodes(resultPromise);
+        case StockCategory.Sector:
+          return this.getSectorNodes(resultPromise);
         case StockCategory.NODATA:
           return this.getNoDataStockNodes(resultPromise);
         default:
@@ -97,8 +93,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           (element.id === StockCategory.US && this.expandUSStock) ||
           (element.id === StockCategory.Future && this.expandCNFuture) ||
           (element.id === StockCategory.OverseaFuture && this.expandCNFuture) ||
-          (element.id === StockCategory.SectorIndustry && this.expandSectorIndustry) ||
-          (element.id === StockCategory.SectorConcept && this.expandSectorConcept)
+          (element.id === StockCategory.Sector && this.expandSectorIndices)
             ? TreeItemCollapsibleState.Expanded
             : TreeItemCollapsibleState.Collapsed,
         // iconPath: this.parseIconPathFromProblemState(element),
@@ -162,20 +157,8 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
       ),
       new LeekTreeItem(
         Object.assign({ contextValue: 'sectorCategory' }, defaultFundInfo, {
-          id: StockCategory.SectorIndustry,
-          name: `行业板块${
-            globalState.sectorIndustryCount > 0 ? `(${globalState.sectorIndustryCount})` : ''
-          }`,
-        }),
-        undefined,
-        true
-      ),
-      new LeekTreeItem(
-        Object.assign({ contextValue: 'sectorCategory' }, defaultFundInfo, {
-          id: StockCategory.SectorConcept,
-          name: `概念板块${
-            globalState.sectorConceptCount > 0 ? `(${globalState.sectorConceptCount})` : ''
-          }`,
+          id: StockCategory.Sector,
+          name: `板块指数${globalState.sectorCount > 0 ? `(${globalState.sectorCount})` : ''}`,
         }),
         undefined,
         true
@@ -224,14 +207,9 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
       res.filter((item: LeekTreeItem) => /^(hf_)/.test(item.type || ''))
     );
   }
-  getSectorIndustryNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
+  getSectorNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
     return stocks.then((res: LeekTreeItem[]) =>
-      res.filter((item: LeekTreeItem) => /^(bk_industry)/.test(item.type || ''))
-    );
-  }
-  getSectorConceptNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
-    return stocks.then((res: LeekTreeItem[]) =>
-      res.filter((item: LeekTreeItem) => /^(bk_concept)/.test(item.type || ''))
+      res.filter((item: LeekTreeItem) => /^(bk)/.test(item.type || ''))
     );
   }
   getNoDataStockNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {

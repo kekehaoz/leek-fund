@@ -37,7 +37,6 @@ export default class StockService extends LeekService {
   private static readonly STOCK_MA_RETRY_MS = 30 * 60 * 1000;
   // 板块指数缓存，API 失败时使用
   private sectorIndexCache: LeekTreeItem[] = [];
-  private sectorTypeMapCache: Record<string, string> | null = null;
 
   constructor(context: ExtensionContext) {
     super();
@@ -94,8 +93,7 @@ export default class StockService extends LeekService {
 
     let stockList: Array<LeekTreeItem> = [];
     globalState.noDataStockCount = 0; // 重置无数据股票计数
-    globalState.sectorIndustryCount = 0; // 重置行业板块计数
-    globalState.sectorConceptCount = 0; // 重置概念板块计数
+    globalState.sectorCount = 0; // 重置板块指数计数
     const result = await Promise.allSettled([
       this.getStockData(stockCodes),
       this.getHKStockData(hkCodes),
@@ -942,7 +940,6 @@ export default class StockService extends LeekService {
     try {
       const eastmoneyData = await this.fetchFromEastmoney(codes);
       if (eastmoneyData && eastmoneyData.length > 0) {
-        const typeMap = await this.getSectorTypeMap();
         eastmoneyData.forEach((item: any) => {
           const bkCode = item.f12;
           const code = `bk_${bkCode}`;
@@ -957,12 +954,7 @@ export default class StockService extends LeekService {
           const open = item.f17;
           const yestclose = item.f18;
 
-          const sectorType = typeMap[bkCode] || 'industry';
-          if (sectorType === 'concept') {
-            globalState.sectorConceptCount += 1;
-          } else {
-            globalState.sectorIndustryCount += 1;
-          }
+          globalState.sectorCount += 1;
 
           const stockItem: any = {
             code,
@@ -976,7 +968,7 @@ export default class StockService extends LeekService {
             low: formatNumber(low, 2, false),
             volume: formatNumber(volume || 0, 2),
             amount: formatNumber(amount || 0, 2),
-            type: sectorType === 'concept' ? 'bk_concept' : 'bk_industry',
+            type: 'bk',
             contextValue: 'sectorIndex',
             isStock: true,
             showLabel: this.showLabel,
@@ -1010,23 +1002,27 @@ export default class StockService extends LeekService {
     return this.sectorIndexCache;
   }
 
-  // 东方财富 API 重试
+  // 东方财富 API：盘后/部分网络下 push2 会断连，fallback 到 push2delay
   private async fetchFromEastmoney(codes: string[]): Promise<any[] | null> {
     const secids = codes.map((c) => `90.${c.replace('bk_', '').toUpperCase()}`).join(',');
-    const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18&secids=${secids}`;
+    const hosts = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
+    const fields = 'f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18';
 
-    for (let i = 0; i < 3; i++) {
-      try {
-        const response = await Axios.get(url, {
-          headers: randHeader(),
-          timeout: 8000,
-        });
-        const data = response.data?.data?.diff;
-        if (data && data.length > 0) {
-          return data;
+    for (const host of hosts) {
+      const url = `${host}/api/qt/ulist.np/get?fltt=2&invt=2&fields=${fields}&secids=${secids}`;
+      for (let i = 0; i < 2; i++) {
+        try {
+          const response = await Axios.get(url, {
+            headers: randHeader(),
+            timeout: 8000,
+          });
+          const data = response.data?.data?.diff;
+          if (data && data.length > 0) {
+            return data;
+          }
+        } catch (err) {
+          Log.info(`Eastmoney ${host} retry ${i + 1} failed`);
         }
-      } catch (err) {
-        Log.info(`Eastmoney retry ${i + 1} failed`);
       }
     }
     return null;
@@ -1035,7 +1031,6 @@ export default class StockService extends LeekService {
   // 新浪 API 备用源
   private async fetchFromSina(codes: string[]): Promise<LeekTreeItem[]> {
     const sinaSectors = await fetchSinaSectors();
-    const typeMap = await this.getSectorTypeMap();
     const stockList: LeekTreeItem[] = [];
 
     for (const code of codes) {
@@ -1044,12 +1039,7 @@ export default class StockService extends LeekService {
 
       if (!sinaItem) continue;
 
-      const sectorType = typeMap[bkCode] || 'industry';
-      if (sectorType === 'concept') {
-        globalState.sectorConceptCount += 1;
-      } else {
-        globalState.sectorIndustryCount += 1;
-      }
+      globalState.sectorCount += 1;
 
       const stockItem: any = {
         code,
@@ -1063,7 +1053,7 @@ export default class StockService extends LeekService {
         low: '--',
         volume: formatNumber(sinaItem.volume || 0, 2),
         amount: formatNumber(sinaItem.amount || 0, 2),
-        type: sectorType === 'concept' ? 'bk_concept' : 'bk_industry',
+        type: 'bk',
         contextValue: 'sectorIndex',
         isStock: true,
         showLabel: this.showLabel,
@@ -1083,26 +1073,6 @@ export default class StockService extends LeekService {
       }
     }
     return null;
-  }
-
-  // 缓存板块类型映射
-  private async getSectorTypeMap(): Promise<Record<string, string>> {
-    if (this.sectorTypeMapCache) return this.sectorTypeMapCache;
-    const map: Record<string, string> = {};
-    try {
-      // 获取概念板块列表
-      const gnUrl = `https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:90+t:3&fields=f12`;
-      const gnRes = await Axios.get(gnUrl, { headers: randHeader() });
-      gnRes.data?.data?.diff?.forEach((item: any) => {
-        map[item.f12] = 'concept';
-      });
-      // 行业板块默认
-      this.sectorTypeMapCache = map;
-    } catch (err) {
-      console.error('getSectorTypeMap error', err);
-      this.sectorTypeMapCache = map;
-    }
-    return map;
   }
 
   // 板块指数搜索

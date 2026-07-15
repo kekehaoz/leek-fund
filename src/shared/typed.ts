@@ -111,8 +111,7 @@ export enum StockCategory {
   HK = 'HK Stock',
   Future = 'CN Future',
   OverseaFuture = 'Oversea Future',
-  SectorIndustry = 'Industry Sector',
-  SectorConcept = 'Concept Sector',
+  Sector = 'Sector Index',
   NODATA = 'Not Support Stock',
 }
 
