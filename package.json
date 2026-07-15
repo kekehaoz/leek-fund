@@ -627,7 +627,10 @@
             "nf_IC0",
             "nf_IM0",
             "hf_OIL",
-            "hf_CHA50CFD"
+            "hf_CHA50CFD",
+            "oi_N225",
+            "oi_KS11",
+            "oi_TWII"
           ],
           "description": "配置需要监控的股票代码（建议通过界面新增）"
         },
@@ -821,6 +824,11 @@
           "type": "boolean",
           "default": false,
           "description": "默认展开海外期货"
+        },
+        "leek-fund.expandOverseaIndex": {
+          "type": "boolean",
+          "default": false,
+          "description": "默认展开海外指数"
         },
         "leek-fund.sectorIndices": {
           "type": "array",

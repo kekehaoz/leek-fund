@@ -37,6 +37,8 @@ export default class StockService extends LeekService {
   private static readonly STOCK_MA_RETRY_MS = 30 * 60 * 1000;
   // 板块指数缓存，API 失败时使用
   private sectorIndexCache: LeekTreeItem[] = [];
+  // 海外指数缓存
+  private overseaIndexCache: LeekTreeItem[] = [];
 
   constructor(context: ExtensionContext) {
     super();
@@ -79,12 +81,16 @@ export default class StockService extends LeekService {
     let stockCodes = codes.map(transFuture);
     const hkCodes: Array<string> = []; // 港股单独请求腾讯港股数据源
     const sectorCodes: Array<string> = []; // 板块指数单独请求东方财富数据源
+    const overseaIndexCodes: Array<string> = []; // 海外指数单独请求东方财富数据源
     stockCodes = stockCodes.filter((code) => {
       if (code.startsWith('hk')) {
         hkCodes.push('hk' + code.substring(2).toUpperCase()); // 指数去掉'hk'并转为大写，适配腾讯港股接口
         return false;
       } else if (code.startsWith('bk_')) {
         sectorCodes.push(code);
+        return false;
+      } else if (code.startsWith('oi_')) {
+        overseaIndexCodes.push(code);
         return false;
       } else {
         return true;
@@ -94,10 +100,12 @@ export default class StockService extends LeekService {
     let stockList: Array<LeekTreeItem> = [];
     globalState.noDataStockCount = 0; // 重置无数据股票计数
     globalState.sectorCount = 0; // 重置板块指数计数
+    globalState.overseaIndexCount = 0; // 重置海外指数计数
     const result = await Promise.allSettled([
       this.getStockData(stockCodes),
       this.getHKStockData(hkCodes),
       this.getSectorIndexData(sectorCodes),
+      this.getOverseaIndexData(overseaIndexCodes),
     ]);
     result.forEach((item) => {
       if (item.status === 'fulfilled') {
@@ -922,6 +930,9 @@ export default class StockService extends LeekService {
             });
           }
         });
+        // 补充海外指数（日/韩/台等），仅保留指数类型
+        const oiSuggest = await this.getOverseaIndexSuggestList(searchText);
+        result.push(...oiSuggest);
         return result;
       } catch (err) {
         Log.info('searchStockList error: ', searchText);
@@ -936,38 +947,28 @@ export default class StockService extends LeekService {
     if (!codes || codes.length === 0) return [];
     const stockList: LeekTreeItem[] = [];
 
-    // 东方财富 API 带重试
     try {
-      const eastmoneyData = await this.fetchFromEastmoney(codes);
+      const eastmoneyData = await this.fetchEastmoneyUlist(
+        codes.map((c) => `90.${c.replace('bk_', '').toUpperCase()}`)
+      );
       if (eastmoneyData && eastmoneyData.length > 0) {
         eastmoneyData.forEach((item: any) => {
           const bkCode = item.f12;
           const code = `bk_${bkCode}`;
-          const name = item.f14;
-          const price = item.f2;
-          const percent = item.f3;
-          const updown = item.f4;
-          const volume = item.f5;
-          const amount = item.f6;
-          const high = item.f15;
-          const low = item.f16;
-          const open = item.f17;
-          const yestclose = item.f18;
-
           globalState.sectorCount += 1;
 
           const stockItem: any = {
             code,
-            name,
-            price: formatNumber(price, 2, false),
-            percent: formatNumber(percent, 2, false),
-            updown: formatNumber(updown, 2, false),
-            open: formatNumber(open, 2, false),
-            yestclose: formatNumber(yestclose, 2, false),
-            high: formatNumber(high, 2, false),
-            low: formatNumber(low, 2, false),
-            volume: formatNumber(volume || 0, 2),
-            amount: formatNumber(amount || 0, 2),
+            name: item.f14,
+            price: formatNumber(item.f2, 2, false),
+            percent: formatNumber(item.f3, 2, false),
+            updown: formatNumber(item.f4, 2, false),
+            open: formatNumber(item.f17, 2, false),
+            yestclose: formatNumber(item.f18, 2, false),
+            high: formatNumber(item.f15, 2, false),
+            low: formatNumber(item.f16, 2, false),
+            volume: formatNumber(item.f5 || 0, 2),
+            amount: formatNumber(item.f6 || 0, 2),
             type: 'bk',
             contextValue: 'sectorIndex',
             isStock: true,
@@ -986,7 +987,6 @@ export default class StockService extends LeekService {
       Log.info('Eastmoney API failed, trying Sina fallback');
     }
 
-    // 降级到新浪 API
     try {
       const sinaData = await this.fetchFromSina(codes);
       if (sinaData && sinaData.length > 0) {
@@ -997,19 +997,69 @@ export default class StockService extends LeekService {
       Log.error('Sina API fallback failed');
     }
 
-    // 全部失败，使用缓存
     Log.info('All sector APIs failed, using cache');
     return this.sectorIndexCache;
   }
 
-  // 东方财富 API：盘后/部分网络下 push2 会断连，fallback 到 push2delay
-  private async fetchFromEastmoney(codes: string[]): Promise<any[] | null> {
-    const secids = codes.map((c) => `90.${c.replace('bk_', '').toUpperCase()}`).join(',');
+  // 海外指数数据获取（日经 / KOSPI / 台指等）
+  async getOverseaIndexData(codes: string[]): Promise<LeekTreeItem[]> {
+    if (!codes || codes.length === 0) return [];
+    const stockList: LeekTreeItem[] = [];
+
+    try {
+      const eastmoneyData = await this.fetchEastmoneyUlist(
+        codes.map((c) => `100.${c.replace('oi_', '').toUpperCase()}`)
+      );
+      if (eastmoneyData && eastmoneyData.length > 0) {
+        eastmoneyData.forEach((item: any) => {
+          const symbol = item.f12;
+          const code = `oi_${symbol}`;
+          globalState.overseaIndexCount += 1;
+
+          const stockItem: any = {
+            code,
+            name: item.f14,
+            price: formatNumber(item.f2, 2, false),
+            percent: formatNumber(item.f3, 2, false),
+            updown: formatNumber(item.f4, 2, false),
+            open: formatNumber(item.f17, 2, false),
+            yestclose: formatNumber(item.f18, 2, false),
+            high: formatNumber(item.f15, 2, false),
+            low: formatNumber(item.f16, 2, false),
+            volume: formatNumber(item.f5 || 0, 2),
+            amount: formatNumber(item.f6 || 0, 2),
+            type: 'oi',
+            symbol,
+            contextValue: 'overseaIndex',
+            isStock: true,
+            showLabel: this.showLabel,
+            _itemType: TreeItemType.STOCK,
+          };
+          stockList.push(new LeekTreeItem(stockItem, this.context));
+        });
+
+        if (stockList.length > 0) {
+          this.overseaIndexCache = stockList;
+          return stockList;
+        }
+      }
+    } catch (err) {
+      Log.info('Oversea index Eastmoney API failed');
+    }
+
+    Log.info('Oversea index APIs failed, using cache');
+    return this.overseaIndexCache;
+  }
+
+  // 东方财富 ulist：盘后/部分网络下 push2 会断连，fallback 到 push2delay
+  private async fetchEastmoneyUlist(secids: string[]): Promise<any[] | null> {
+    if (!secids.length) return null;
     const hosts = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
     const fields = 'f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18';
+    const secidParam = secids.join(',');
 
     for (const host of hosts) {
-      const url = `${host}/api/qt/ulist.np/get?fltt=2&invt=2&fields=${fields}&secids=${secids}`;
+      const url = `${host}/api/qt/ulist.np/get?fltt=2&invt=2&fields=${fields}&secids=${secidParam}`;
       for (let i = 0; i < 2; i++) {
         try {
           const response = await Axios.get(url, {
@@ -1101,6 +1151,34 @@ export default class StockService extends LeekService {
     } catch (err) {
       console.error('getSectorSuggestList error', err);
       return [{ label: '板块查询失败，请重试' }];
+    }
+  }
+
+  // 海外指数搜索（仅返回全球指数，排除股票/基金）
+  async getOverseaIndexSuggestList(searchText = ''): Promise<QuickPickItem[]> {
+    if (!searchText) return [];
+    const result: QuickPickItem[] = [];
+    try {
+      const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(
+        searchText
+      )}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=10`;
+      const response = await Axios.get(url, { headers: randHeader() });
+      const data = response.data?.QuotationCodeTable?.Data;
+      if (!data) return result;
+      data.forEach((item: any) => {
+        const quoteId = String(item.QuoteID || '');
+        const isGlobalIndex = String(item.MktNum) === '100' || quoteId.startsWith('100.');
+        if (!isGlobalIndex) return;
+        if (item.SecurityTypeName && item.SecurityTypeName !== '指数') return;
+        result.push({
+          label: `oi_${item.Code} | ${item.Name}`,
+          description: '海外指数',
+        });
+      });
+      return result;
+    } catch (err) {
+      console.error('getOverseaIndexSuggestList error', err);
+      return [];
     }
   }
 }

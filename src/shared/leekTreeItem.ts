@@ -228,10 +228,11 @@ export class LeekTreeItem extends TreeItem {
       let typeAndSymbol = `${type}${symbol}`;
       const isFuture = /nf_/.test(code) || /hf_/.test(code);
       const isSectorIndex = /^bk_/.test(code);
+      const isOverseaIndex = /^oi_/.test(code);
       if (isFuture) {
         typeAndSymbol = code;
       }
-      if (isSectorIndex) {
+      if (isSectorIndex || isOverseaIndex) {
         typeAndSymbol = code;
       }
       this.command = {
@@ -239,12 +240,18 @@ export class LeekTreeItem extends TreeItem {
         command: isStockItem
           ? isSectorIndex
             ? 'leek-fund.sectorItemClick'
+            : isOverseaIndex
+            ? 'leek-fund.overseaIndexItemClick'
             : 'leek-fund.stockItemClick'
           : isBinanceItem
           ? 'leek-fund.binanceItemClick'
           : 'leek-fund.fundItemClick', // 命令 ID
         arguments: [
-          isStockItem ? (isSectorIndex ? code : '0' + symbol) : code, // 基金/股票编码
+          isStockItem
+            ? isSectorIndex || isOverseaIndex
+              ? code
+              : '0' + symbol
+            : code, // 基金/股票编码
           name, // 基金/股票名称
           text,
           typeAndSymbol,

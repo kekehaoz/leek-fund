@@ -49,6 +49,7 @@ import setStockPrice from './webview/setStockPrice';
 
 import stockTrend from './webview/stockTrend';
 import sectorTrend from './webview/sectorTrend';
+import overseaIndexTrend from './webview/overseaIndexTrend';
 import stockTrendPic from './webview/stockTrendPic';
 import stockWindVane from './webview/stockWindVane';
 import tucaoForum from './webview/tucaoForum';
@@ -312,6 +313,11 @@ export function registerViewEvent(
   context.subscriptions.push(
     commands.registerCommand('leek-fund.sectorItemClick', (code, name, text, stockCode) => {
       sectorTrend(code, name, stockCode);
+    })
+  );
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.overseaIndexItemClick', (code, name, text, stockCode) => {
+      overseaIndexTrend(code, name, stockCode);
     })
   );
 

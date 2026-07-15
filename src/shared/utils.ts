@@ -343,6 +343,8 @@ export function allMarkets(): Array<string> {
       market = StockCategory.Future;
     } else if (/^(hf_)/.test(item)) {
       market = StockCategory.OverseaFuture;
+    } else if (/^(oi_)/.test(item)) {
+      market = StockCategory.OverseaIndex;
     }
     if (!result.includes(market)) {
       result.push(market);
@@ -358,6 +360,8 @@ export function allStockTimes(): Map<string, { tz: string; span: Array<number> }
   stocks.set(StockCategory.US, { tz: 'America/New_York', span: [4, 20] });
   stocks.set(StockCategory.Future, { tz: 'Asia/Shanghai', span: [21, 15] });
   stocks.set(StockCategory.OverseaFuture, { tz: 'Asia/Shanghai', span: [9, 7] });
+  // 日经 / KOSPI / 台指：覆盖东京时区交易时段
+  stocks.set(StockCategory.OverseaIndex, { tz: 'Asia/Tokyo', span: [9, 16] });
   return stocks;
 }
 

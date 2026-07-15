@@ -31,6 +31,7 @@ let cnfStockCount = 0; // 期货数量
 let hfStockCount = 0; // 海外期货数量
 let noDataStockCount = 0;
 let sectorCount = 0; // 板块指数数量
+let overseaIndexCount = 0; // 海外指数数量
 let isHolidayChina = false; // 初始化状态，默认是false，免得API有问题，就当它不是好了，可以继续运行
 
 let showStockErrorInfo = true; // 控制只显示一次错误弹窗（临时处理）
@@ -76,6 +77,7 @@ export default {
   hfStockCount, // 海外期货
   noDataStockCount,
   sectorCount, // 板块指数
+  overseaIndexCount, // 海外指数
   /**
    * 当天是否中国节假日（在插件启动时获取）
    */
