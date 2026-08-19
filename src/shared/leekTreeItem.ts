@@ -229,10 +229,11 @@ export class LeekTreeItem extends TreeItem {
       const isFuture = /nf_/.test(code) || /hf_/.test(code);
       const isSectorIndex = /^bk_/.test(code);
       const isOverseaIndex = /^oi_/.test(code);
+      const isBond = /^bond_/.test(code);
       if (isFuture) {
         typeAndSymbol = code;
       }
-      if (isSectorIndex || isOverseaIndex) {
+      if (isSectorIndex || isOverseaIndex || isBond) {
         typeAndSymbol = code;
       }
       this.command = {
@@ -242,13 +243,15 @@ export class LeekTreeItem extends TreeItem {
             ? 'leek-fund.sectorItemClick'
             : isOverseaIndex
             ? 'leek-fund.overseaIndexItemClick'
+            : isBond
+            ? 'leek-fund.bondItemClick'
             : 'leek-fund.stockItemClick'
           : isBinanceItem
           ? 'leek-fund.binanceItemClick'
           : 'leek-fund.fundItemClick', // 命令 ID
         arguments: [
           isStockItem
-            ? isSectorIndex || isOverseaIndex
+            ? isSectorIndex || isOverseaIndex || isBond
               ? code
               : '0' + symbol
             : code, // 基金/股票编码
@@ -266,6 +269,7 @@ export class LeekTreeItem extends TreeItem {
       const labelText = !showLabel ? name : '';
 
       const isFuture = /nf_/.test(code) || /hf_/.test(code);
+      const isBond = /^bond_/.test(code);
 
       // type字段：国内期货前缀 `nf_` 。股票的 type 是交易所 (sz,sh,bj)
       const typeText = type;
@@ -273,6 +277,8 @@ export class LeekTreeItem extends TreeItem {
 
       if (type === 'nodata') {
         this.tooltip = '接口不支持，右键删除关注';
+      } else if (isBond) {
+        this.tooltip = `【今日行情】${name} ${code}\n 收益率：${price}%   涨跌：${updown}   涨跌幅：${_percent}%\n 最高：${high}   最低：${low}\n 今开：${open}   昨收：${yestclose}\n 更新时间：${time || '--'}`;
       } else if (isFuture) {
         this.tooltip = `【今日行情】${name} ${code}\n 涨跌：${updown}   百分比：${_percent}%\n 最高：${high}   最低：${low}\n 今开：${open}   昨结：${yestclose}\n 成交量：${volume}   成交额：${amount}`;
       } else {

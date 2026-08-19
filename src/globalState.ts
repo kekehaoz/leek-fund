@@ -29,6 +29,7 @@ let usStockCount = 0;
 let hkStockCount = 0;
 let cnfStockCount = 0; // 期货数量
 let hfStockCount = 0; // 海外期货数量
+let bondCount = 0; // 美债收益率数量
 let noDataStockCount = 0;
 let sectorCount = 0; // 板块指数数量
 let overseaIndexCount = 0; // 海外指数数量
@@ -75,6 +76,7 @@ export default {
   hkStockCount,
   cnfStockCount, // 期货
   hfStockCount, // 海外期货
+  bondCount, // 美债收益率
   noDataStockCount,
   sectorCount, // 板块指数
   overseaIndexCount, // 海外指数

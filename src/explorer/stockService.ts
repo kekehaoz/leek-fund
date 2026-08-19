@@ -39,6 +39,8 @@ export default class StockService extends LeekService {
   private sectorIndexCache: LeekTreeItem[] = [];
   // 海外指数缓存
   private overseaIndexCache: LeekTreeItem[] = [];
+  // 美债收益率缓存
+  private bondCache: LeekTreeItem[] = [];
 
   constructor(context: ExtensionContext) {
     super();
@@ -82,15 +84,19 @@ export default class StockService extends LeekService {
     const hkCodes: Array<string> = []; // 港股单独请求腾讯港股数据源
     const sectorCodes: Array<string> = []; // 板块指数单独请求东方财富数据源
     const overseaIndexCodes: Array<string> = []; // 海外指数单独请求东方财富数据源
+    const bondCodes: Array<string> = []; // 美债收益率单独请求东方财富数据源
     stockCodes = stockCodes.filter((code) => {
       if (code.startsWith('hk')) {
-        hkCodes.push('hk' + code.substring(2).toUpperCase()); // 指数去掉'hk'并转为大写，适配腾讯港股接口
+        hkCodes.push('hk' + code.substring(2).toUpperCase()); // 港股去掉'hk'并转为大写，适配腾讯港股接口
         return false;
       } else if (code.startsWith('bk_')) {
         sectorCodes.push(code);
         return false;
       } else if (code.startsWith('oi_')) {
         overseaIndexCodes.push(code);
+        return false;
+      } else if (code.startsWith('bond_')) {
+        bondCodes.push(code);
         return false;
       } else {
         return true;
@@ -101,11 +107,13 @@ export default class StockService extends LeekService {
     globalState.noDataStockCount = 0; // 重置无数据股票计数
     globalState.sectorCount = 0; // 重置板块指数计数
     globalState.overseaIndexCount = 0; // 重置海外指数计数
+    globalState.bondCount = 0; // 重置美债收益率计数
     const result = await Promise.allSettled([
       this.getStockData(stockCodes),
       this.getHKStockData(hkCodes),
       this.getSectorIndexData(sectorCodes),
       this.getOverseaIndexData(overseaIndexCodes),
+      this.getBondData(bondCodes),
     ]);
     result.forEach((item) => {
       if (item.status === 'fulfilled') {
@@ -933,6 +941,9 @@ export default class StockService extends LeekService {
         // 补充海外指数（日/韩/台等），仅保留指数类型
         const oiSuggest = await this.getOverseaIndexSuggestList(searchText);
         result.push(...oiSuggest);
+        // 补充美债收益率（十年期/二年期/三十年期等）
+        const bondSuggest = await this.getBondSuggestList(searchText);
+        result.push(...bondSuggest);
         return result;
       } catch (err) {
         Log.info('searchStockList error: ', searchText);
@@ -1049,6 +1060,90 @@ export default class StockService extends LeekService {
 
     Log.info('Oversea index APIs failed, using cache');
     return this.overseaIndexCache;
+  }
+
+  // 美债收益率数据获取（十年期 / 二年期 / 三十年期等）
+  // 东方财富 secid = 171.{SYMBOL}，如 171.US10Y
+  async getBondData(codes: string[]): Promise<LeekTreeItem[]> {
+    if (!codes || codes.length === 0) return [];
+    const stockList: LeekTreeItem[] = [];
+
+    try {
+      const eastmoneyData = await this.fetchEastmoneyUlist(
+        codes.map((c) => `171.${c.replace('bond_', '').toUpperCase()}`)
+      );
+      if (eastmoneyData && eastmoneyData.length > 0) {
+        eastmoneyData.forEach((item: any) => {
+          const symbol = item.f12;
+          const code = `bond_${symbol}`;
+          globalState.bondCount += 1;
+
+          const stockItem: any = {
+            code,
+            name: item.f14,
+            price: formatNumber(item.f2, 3, false),
+            percent: formatNumber(item.f3, 2, false),
+            updown: formatNumber(item.f4, 3, false),
+            open: formatNumber(item.f17, 3, false),
+            yestclose: formatNumber(item.f18, 3, false),
+            high: formatNumber(item.f15, 3, false),
+            low: formatNumber(item.f16, 3, false),
+            volume: formatNumber(typeof item.f5 === 'number' ? item.f5 : 0, 2),
+            amount: formatNumber(typeof item.f6 === 'number' ? item.f6 : 0, 2),
+            type: 'bond',
+            symbol,
+            contextValue: 'bond',
+            isStock: true,
+            showLabel: this.showLabel,
+            _itemType: TreeItemType.STOCK,
+          };
+          stockList.push(new LeekTreeItem(stockItem, this.context));
+        });
+
+        if (stockList.length > 0) {
+          this.bondCache = stockList;
+          return stockList;
+        }
+      }
+    } catch (err) {
+      Log.info('Bond Eastmoney API failed');
+    }
+
+    Log.info('Bond APIs failed, using cache');
+    return this.bondCache;
+  }
+
+  // 美债收益率搜索（静态常见期限，东方财富 secid 前缀 171）
+  async getBondSuggestList(searchText = ''): Promise<QuickPickItem[]> {
+    const candidates = [
+      { symbol: 'US10Y', name: '美国10年期国债收益率' },
+      { symbol: 'US2Y', name: '美国2年期国债收益率' },
+      { symbol: 'US3M', name: '美国3月期国债收益率' },
+      { symbol: 'US6M', name: '美国6月期国债收益率' },
+      { symbol: 'US1Y', name: '美国1年期国债收益率' },
+      { symbol: 'US5Y', name: '美国5年期国债收益率' },
+      { symbol: 'US7Y', name: '美国7年期国债收益率' },
+      { symbol: 'US20Y', name: '美国20年期国债收益率' },
+      { symbol: 'US30Y', name: '美国30年期国债收益率' },
+    ];
+    const kw = searchText.trim().toLowerCase();
+    const matched = kw
+      ? candidates.filter(
+          (c) =>
+            c.name.includes(searchText) ||
+            c.symbol.toLowerCase().includes(kw) ||
+            '美债'.includes(searchText) ||
+            '国债'.includes(searchText) ||
+            searchText.includes('债') ||
+            searchText.includes('收益率') ||
+            searchText.includes('bond') ||
+            /10\s*年/.test(searchText)
+        )
+      : candidates;
+    return matched.map((c) => ({
+      label: `bond_${c.symbol} | ${c.name}`,
+      description: '美债收益率',
+    }));
   }
 
   // 东方财富 ulist：盘后/部分网络下 push2 会断连，fallback 到 push2delay

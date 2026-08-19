@@ -622,6 +622,7 @@
             "usr_ixic",
             "usr_dji",
             "usr_inx",
+            "bond_US10Y",
             "nf_IF0",
             "nf_IH0",
             "nf_IC0",
@@ -814,6 +815,11 @@
           "type": "boolean",
           "default": false,
           "description": "默认展开美股"
+        },
+        "leek-fund.expandBond": {
+          "type": "boolean",
+          "default": false,
+          "description": "默认展开美债收益率"
         },
         "leek-fund.expandCNFuture": {
           "type": "boolean",

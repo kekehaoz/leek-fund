@@ -109,6 +109,7 @@ export enum StockCategory {
   A = 'A Stock',
   US = 'US Stock',
   HK = 'HK Stock',
+  Bond = '美债收益率',
   Future = 'CN Future',
   OverseaFuture = 'Oversea Future',
   OverseaIndex = 'Oversea Index',

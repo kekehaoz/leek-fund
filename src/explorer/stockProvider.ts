@@ -17,6 +17,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
   private expandAStock: boolean;
   private expandHKStock: boolean;
   private expandUSStock: boolean;
+  private expandBond: boolean;
   private expandCNFuture: boolean;
   private expandOverseaFuture: boolean;
   private expandOverseaIndex: boolean;
@@ -28,6 +29,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
     this.expandAStock = LeekFundConfig.getConfig('leek-fund.expandAStock', true);
     this.expandHKStock = LeekFundConfig.getConfig('leek-fund.expandHKStock', false);
     this.expandUSStock = LeekFundConfig.getConfig('leek-fund.expandUSStock', false);
+    this.expandBond = LeekFundConfig.getConfig('leek-fund.expandBond', false);
     this.expandCNFuture = LeekFundConfig.getConfig('leek-fund.expandCNFuture', false);
     this.expandOverseaFuture = LeekFundConfig.getConfig('leek-fund.expandOverseaFuture', false);
     this.expandOverseaIndex = LeekFundConfig.getConfig('leek-fund.expandOverseaIndex', false);
@@ -62,6 +64,8 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           return this.getHkStockNodes(resultPromise);
         case StockCategory.US:
           return this.getUsStockNodes(resultPromise);
+        case StockCategory.Bond:
+          return this.getBondNodes(resultPromise);
         case StockCategory.Future:
           return this.getFutureStockNodes(resultPromise);
         case StockCategory.OverseaFuture:
@@ -95,6 +99,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           (element.id === StockCategory.A && this.expandAStock) ||
           (element.id === StockCategory.HK && this.expandHKStock) ||
           (element.id === StockCategory.US && this.expandUSStock) ||
+          (element.id === StockCategory.Bond && this.expandBond) ||
           (element.id === StockCategory.Future && this.expandCNFuture) ||
           (element.id === StockCategory.OverseaFuture && this.expandOverseaFuture) ||
           (element.id === StockCategory.OverseaIndex && this.expandOverseaIndex) ||
@@ -135,6 +140,16 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
           id: StockCategory.US,
           name: `${StockCategory.US}${
             globalState.usStockCount > 0 ? `(${globalState.usStockCount})` : ''
+          }`,
+        }),
+        undefined,
+        true
+      ),
+      new LeekTreeItem(
+        Object.assign({ contextValue: 'category' }, defaultFundInfo, {
+          id: StockCategory.Bond,
+          name: `${StockCategory.Bond}${
+            globalState.bondCount > 0 ? `(${globalState.bondCount})` : ''
           }`,
         }),
         undefined,
@@ -212,6 +227,11 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
   getUsStockNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
     return stocks.then((res: LeekTreeItem[]) =>
       res.filter((item: LeekTreeItem) => /^(usr_)/.test(item.type || ''))
+    );
+  }
+  getBondNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
+    return stocks.then((res: LeekTreeItem[]) =>
+      res.filter((item: LeekTreeItem) => /^(bond)/.test(item.type || ''))
     );
   }
   getFutureStockNodes(stocks: Promise<LeekTreeItem[]>): Promise<LeekTreeItem[]> {
