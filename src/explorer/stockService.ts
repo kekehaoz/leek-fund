@@ -28,7 +28,7 @@ export default class StockService extends LeekService {
   private token: string = '';
   private stockMaCache: Record<
     string,
-    { date: string; lastBarDate: string; ma5: number; ma10: number; ma20: number; ma30: number }
+    { date: string; lastBarDate: string; closes: number[] }
   > = {};
   private stockMaTaskMap: Record<string, Promise<void> | undefined> = {};
   /** 上次拉取到的最新 K 线日期，用于判断补拉是否仍有进展 */
@@ -159,20 +159,21 @@ export default class StockService extends LeekService {
     const cache = this.stockMaCache[stockCode];
     if (cache && cache.date === marketToday) {
       const price = Number(stockItem.price);
+      const maLine = this.calcLiveMALine(cache, stockItem, marketToday, price);
       const fmt = (maVal: number) => formatNumber(maVal, 2, false);
       const dev = (maVal: number) => {
         if (!maVal || isNaN(price) || price <= 0) return '';
         const d = ((price - maVal) / maVal) * 100;
         return (d >= 0 ? '+' : '') + formatNumber(d, 2, false) + '%';
       };
-      stockItem.ma5 = fmt(cache.ma5);
-      stockItem.ma10 = fmt(cache.ma10);
-      stockItem.ma20 = fmt(cache.ma20);
-      stockItem.ma30 = fmt(cache.ma30);
-      stockItem.ma5dev = dev(cache.ma5);
-      stockItem.ma10dev = dev(cache.ma10);
-      stockItem.ma20dev = dev(cache.ma20);
-      stockItem.ma30dev = dev(cache.ma30);
+      stockItem.ma5 = fmt(maLine.ma5);
+      stockItem.ma10 = fmt(maLine.ma10);
+      stockItem.ma20 = fmt(maLine.ma20);
+      stockItem.ma30 = fmt(maLine.ma30);
+      stockItem.ma5dev = dev(maLine.ma5);
+      stockItem.ma10dev = dev(maLine.ma10);
+      stockItem.ma20dev = dev(maLine.ma20);
+      stockItem.ma30dev = dev(maLine.ma30);
       return;
     }
     void this.asyncFetchStockMALine(stockCode);
@@ -188,6 +189,55 @@ export default class StockService extends LeekService {
       return momentTz().tz('Asia/Hong_Kong').format('YYYY-MM-DD');
     }
     return formatDate(new Date());
+  }
+
+  /**
+   * 用实时价叠加计算 MA：
+   * 缓存里已有当日 K 线时，用实时价覆盖最后一根收盘价；
+   * 当日 K 线尚未生成、但行情已属于当日时，把实时价追加为当日收盘价。
+   * 这样盘中每次刷新 MA 都会跟随实时价变动（与同花顺口径一致）。
+   */
+  private calcLiveMALine(
+    cache: { date: string; lastBarDate: string; closes: number[] },
+    stockItem: any,
+    marketToday: string,
+    price: number
+  ) {
+    const closes = cache.closes.slice();
+    if (!isNaN(price) && price > 0 && this.isQuoteOfToday(stockItem, marketToday)) {
+      if (cache.lastBarDate === marketToday) {
+        closes[closes.length - 1] = price;
+      } else if (cache.lastBarDate < marketToday) {
+        closes.push(price);
+      }
+    }
+    const calcMA = (days: number): number => {
+      if (closes.length < days) {
+        return 0;
+      }
+      const list = closes.slice(-days);
+      const sum = list.reduce((acc, val) => acc + val, 0);
+      return sum / days;
+    };
+    return {
+      ma5: calcMA(5),
+      ma10: calcMA(10),
+      ma20: calcMA(20),
+      ma30: calcMA(30),
+    };
+  }
+
+  /** 行情时间戳是否属于该市场日历的「今天」（避免休市日/节假日误把实时价计入当日） */
+  private isQuoteOfToday(stockItem: any, marketToday: string): boolean {
+    const timeStr = String(stockItem?.time || '').trim();
+    if (!timeStr) return false;
+    const stockCode = String(stockItem.code || '').toLowerCase();
+    if (stockCode.startsWith('usr_')) {
+      // 新浪美股行情时间为北京时间，换算成美东日期再比较
+      const nyDate = momentTz(timeStr, 'Asia/Shanghai').tz('America/New_York').format('YYYY-MM-DD');
+      return nyDate === marketToday;
+    }
+    return timeStr.slice(0, 10).replace(/\//g, '-') === marketToday;
   }
 
   private scheduleStockMaRetry(stockCode: string) {
@@ -221,10 +271,7 @@ export default class StockService extends LeekService {
         this.stockMaCache[stockCode] = {
           date: marketToday,
           lastBarDate: maLineData.lastBarDate,
-          ma5: maLineData.ma5,
-          ma10: maLineData.ma10,
-          ma20: maLineData.ma20,
-          ma30: maLineData.ma30,
+          closes: maLineData.closes,
         };
         events.emit('stockMaReady', stockCode, maLineData);
         // 日 K 尚无「当日」：30 分钟后最多补拉一次；若 K 线日期无变化则不再重试
@@ -267,22 +314,12 @@ export default class StockService extends LeekService {
     }
     rows.sort((a, b) => a.date.localeCompare(b.date));
     const lastBarDate = rows[rows.length - 1].date;
-    const closes = rows.map((item) => item.close);
-    const calcMA = (days: number): number => {
-      if (closes.length < days) {
-        return 0;
-      }
-      const list = closes.slice(-days);
-      const sum = list.reduce((acc, val) => acc + val, 0);
-      return sum / days;
-    };
+    // 只保留计算 MA30 所需的最近 30 根收盘价
+    const closes = rows.map((item) => item.close).slice(-30);
 
     return {
       lastBarDate,
-      ma5: calcMA(5),
-      ma10: calcMA(10),
-      ma20: calcMA(20),
-      ma30: calcMA(30),
+      closes,
     };
   }
 
