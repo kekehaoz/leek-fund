@@ -35,6 +35,9 @@ export default class StockService extends LeekService {
   private stockMaFetchSnap: Record<string, string> = {};
   private stockMaPendingRetry: Record<string, NodeJS.Timeout | undefined> = {};
   private static readonly STOCK_MA_RETRY_MS = 30 * 60 * 1000;
+  private static readonly STOCK_MA_MAX_CONCURRENT = 4;
+  private stockMaFetchWaiterQueue: Array<() => void> = [];
+  private stockMaActiveFetchCount = 0;
   // 板块指数缓存，API 失败时使用
   private sectorIndexCache: LeekTreeItem[] = [];
   // 海外指数缓存
@@ -260,7 +263,7 @@ export default class StockService extends LeekService {
     if (this.stockMaTaskMap[stockCode]) {
       return;
     }
-    this.stockMaTaskMap[stockCode] = this.fetchStockMALine(stockCode)
+    this.stockMaTaskMap[stockCode] = this.fetchStockMALineWithLimit(stockCode)
       .then((maLineData) => {
         if (!maLineData) {
           return;
@@ -286,6 +289,37 @@ export default class StockService extends LeekService {
         delete this.stockMaTaskMap[stockCode];
       });
     await this.stockMaTaskMap[stockCode];
+  }
+
+  private async fetchStockMALineWithLimit(stockCode: string) {
+    await this.acquireStockMaFetchSlot();
+    try {
+      return await this.fetchStockMALine(stockCode);
+    } finally {
+      this.releaseStockMaFetchSlot();
+    }
+  }
+
+  private acquireStockMaFetchSlot(): Promise<void> {
+    return new Promise((resolve) => {
+      const run = () => {
+        this.stockMaActiveFetchCount += 1;
+        resolve();
+      };
+      if (this.stockMaActiveFetchCount < StockService.STOCK_MA_MAX_CONCURRENT) {
+        run();
+      } else {
+        this.stockMaFetchWaiterQueue.push(run);
+      }
+    });
+  }
+
+  private releaseStockMaFetchSlot() {
+    this.stockMaActiveFetchCount -= 1;
+    const next = this.stockMaFetchWaiterQueue.shift();
+    if (next) {
+      next();
+    }
   }
 
   private async fetchStockMALine(stockCode: string) {

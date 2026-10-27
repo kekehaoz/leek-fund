@@ -35,7 +35,7 @@ function toSohuCode(stockId: string): string | null {
   return null;
 }
 
-/** 腾讯 fqkline 代码规范化：港股数字部分补足5位，A股直接用 sh/sz 前缀 */
+/** 腾讯 K 线代码规范化：港股数字部分补足 5 位，A 股直接用 sh/sz 前缀 */
 function normalizeTencentSymbol(stockId: string): string | null {
   if (!stockId || stockId.length < 3) return null;
   const lower = stockId.toLowerCase();
@@ -78,7 +78,55 @@ async function fetchSohuQfqText(stockId: string, startCompact: string, endCompac
   return typeof response === 'string' ? response : (response.data ? String(response.data) : '');
 }
 
-async function fetchTencentHkQfqText(
+function eastMoneyKlinesToCsv(klines: string[]): string {
+  if (!klines.length) return '';
+  // 东方财富格式: "日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率"
+  const lines = ['日期,开盘,收盘,最高,最低,成交量'];
+  for (const row of klines) {
+    const parts = row.split(',');
+    if (parts.length < 6) continue;
+    lines.push(`${parts[0]},${parts[1]},${parts[2]},${parts[3]},${parts[4]},${parts[5]}`);
+  }
+  return lines.length > 1 ? lines.join('\n') : '';
+}
+
+/** 东方财富 A 股日 K。沪市 secid 为 1.xxxxxx，深市/北交所为 0.xxxxxx。 */
+async function fetchEastMoneyAStockText(
+  stockId: string,
+  startYmd: string,
+  endYmd: string,
+  range: string
+): Promise<string> {
+  const match = /^(sh|sz|bj)(\d+)$/i.exec(stockId);
+  if (!match) return '';
+  const market = match[1].toLowerCase() === 'sh' ? '1' : '0';
+  const maxBars = rangeToMaxBars(range) + 10; // 多取几条保证 MA30 有足够数据
+  try {
+    const res = await axios.get('https://push2his.eastmoney.com/api/qt/stock/kline/get', {
+      params: {
+        secid: `${market}.${match[2]}`,
+        fields1: 'f1,f2,f3,f4,f5',
+        fields2: 'f51,f52,f53,f54,f55,f56',
+        klt: 101,
+        fqt: 1,
+        beg: startYmd.replace(/-/g, ''),
+        end: endYmd.replace(/-/g, ''),
+        lmt: maxBars,
+      },
+      headers: { Referer: 'https://finance.eastmoney.com/', 'User-Agent': 'Mozilla/5.0' },
+      timeout: 8000,
+    });
+    return eastMoneyKlinesToCsv(res.data?.data?.klines || []);
+  } catch (_) {
+    return '';
+  }
+}
+
+/**
+ * 腾讯可用日 K 接口。原 fqkline 地址当前会返回 WAF 501，
+ * 这里改用 kline/kline 作为 A 股/港股兜底。
+ */
+async function fetchTencentKlineText(
   stockId: string,
   startYmd: string,
   endYmd: string,
@@ -87,19 +135,27 @@ async function fetchTencentHkQfqText(
   const sym = normalizeTencentSymbol(stockId);
   if (!sym) return '';
   const maxBars = rangeToMaxBars(range);
-  const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${encodeURIComponent(
-    `${sym},day,${startYmd},${endYmd},${maxBars},`
+  const url = `https://web.ifzq.gtimg.cn/appstock/app/kline/kline?param=${encodeURIComponent(
+    `${sym},day,${startYmd},${endYmd},${maxBars}`
   )}`;
-  const res = await axios.get(url, { responseType: 'json' });
-  const symData = res.data?.data?.[sym];
-  const day = symData?.day;
-  if (!Array.isArray(day) || !day.length) return '';
-  const lines = ['日期,开盘,收盘,最高,最低,成交量'];
-  for (const row of day) {
-    if (!Array.isArray(row) || row.length < 6) continue;
-    lines.push(`${row[0]},${row[1]},${row[2]},${row[3]},${row[4]},${row[5]}`);
+  try {
+    const res = await axios.get(url, {
+      responseType: 'json',
+      headers: { Referer: 'https://gu.qq.com/', 'User-Agent': 'Mozilla/5.0' },
+      timeout: 8000,
+    });
+    const symData = res.data?.data?.[sym];
+    const day = symData?.day;
+    if (!Array.isArray(day) || !day.length) return '';
+    const lines = ['日期,开盘,收盘,最高,最低,成交量'];
+    for (const row of day) {
+      if (!Array.isArray(row) || row.length < 6) continue;
+      lines.push(`${row[0]},${row[1]},${row[2]},${row[3]},${row[4]},${row[5]}`);
+    }
+    return lines.length > 1 ? lines.join('\n') : '';
+  } catch (_) {
+    return '';
   }
-  return lines.join('\n');
 }
 
 /**
@@ -124,16 +180,7 @@ async function fetchEastMoneyUsText(
       headers: { Referer: 'https://finance.eastmoney.com/', 'User-Agent': 'Mozilla/5.0' },
       timeout: 8000,
     });
-    const klines: string[] = res.data?.data?.klines || [];
-    if (!klines.length) return '';
-    // 东方财富格式: "日期,开盘,收盘,最高,最低,成交量,成交额,振幅,涨跌幅,涨跌额,换手率"
-    const lines = ['日期,开盘,收盘,最高,最低,成交量'];
-    for (const row of klines) {
-      const parts = row.split(',');
-      if (parts.length < 6) continue;
-      lines.push(`${parts[0]},${parts[1]},${parts[2]},${parts[3]},${parts[4]},${parts[5]}`);
-    }
-    return lines.join('\n');
+    return eastMoneyKlinesToCsv(res.data?.data?.klines || []);
   };
 
   // NASDAQ(105) 优先，失败或无数据再试 NYSE(106)
@@ -149,7 +196,7 @@ async function fetchEastMoneyUsText(
 
 /**
  * 获取日线行情文本，用于计算 MA 均线。
- * A股/港股走腾讯接口，美股走东方财富接口。
+ * A 股优先走东方财富前复权接口，港股走腾讯接口，美股走东方财富接口。
  */
 export async function fetchRecentQfqTradeDataForAi(
   stockId: string,
@@ -163,9 +210,18 @@ export async function fetchRecentQfqTradeDataForAi(
   const endCompact = endYmd.replace(/-/g, '');
 
   const lower = stockId.toLowerCase();
-  if (lower.startsWith('hk') || lower.startsWith('sh') || lower.startsWith('sz')) {
-    const text = await fetchTencentHkQfqText(stockId, startYmd, endYmd, range);
-    return { text, sourceLabel: '腾讯财经（日线）' };
+  if (lower.startsWith('sh') || lower.startsWith('sz') || lower.startsWith('bj')) {
+    const eastMoneyText = await fetchEastMoneyAStockText(stockId, startYmd, endYmd, range);
+    if (eastMoneyText) {
+      return { text: eastMoneyText, sourceLabel: '东方财富（A股前复权日线）' };
+    }
+    const tencentText = await fetchTencentKlineText(stockId, startYmd, endYmd, range);
+    return { text: tencentText, sourceLabel: '腾讯财经（A股日线）' };
+  }
+
+  if (lower.startsWith('hk')) {
+    const text = await fetchTencentKlineText(stockId, startYmd, endYmd, range);
+    return { text, sourceLabel: '腾讯财经（港股日线）' };
   }
 
   if (lower.startsWith('usr_')) {
