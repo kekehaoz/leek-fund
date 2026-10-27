@@ -17,6 +17,8 @@ import StockService from './explorer/stockService';
 import globalState from './globalState';
 import FlashNewsDaemon from './output/flash-news/FlashNewsDaemon';
 import FlashNewsOutputServer from './output/flash-news/FlashNewsOutputServer';
+import StockChangesDaemon from './output/stock-changes/StockChangesDaemon';
+import StockChangesOutputServer from './output/stock-changes/StockChangesOutputServer';
 import { registerCommandPaletteEvent, registerViewEvent } from './registerCommand';
 import { HolidayHelper } from './shared/holidayHelper';
 import { LeekFundConfig } from './shared/leekConfig';
@@ -41,6 +43,7 @@ let forexTreeView: TreeView<any> | null = null;
 let binanceTreeView: TreeView<any> | null = null;
 
 let flashNewsOutputServer: FlashNewsOutputServer | null = null;
+let stockChangesOutputServer: StockChangesOutputServer | null = null;
 let profitBar: ProfitStatusBar | null = null;
 
 export async function activate(context: ExtensionContext) {
@@ -63,6 +66,7 @@ export async function activate(context: ExtensionContext) {
   updateStockPrice();
 
   flashNewsOutputServer = new FlashNewsOutputServer();
+  stockChangesOutputServer = new StockChangesOutputServer();
 
   // 初始化选股宝快讯服务
   FlashNewsDaemon.registerServer({
@@ -208,6 +212,7 @@ export async function activate(context: ExtensionContext) {
     binanceProvider.refresh();
     forexProvider.refresh();
     flashNewsOutputServer?.reload();
+    stockChangesOutputServer?.reload();
     events.emit('onDidChangeConfiguration');
     profitBar?.reload();
   });
@@ -221,6 +226,7 @@ export async function activate(context: ExtensionContext) {
     nodeStockProvider,
     newsProvider,
     flashNewsOutputServer,
+    stockChangesOutputServer,
     binanceProvider,
     forexProvider
   );
@@ -298,6 +304,7 @@ function setGlobalVariable() {
 export function deactivate() {
   Log.info('deactivate');
   FlashNewsDaemon.KillAllServer();
+  StockChangesDaemon.KillAllServer();
   profitBar?.destroy();
   if (loopTimer) {
     clearInterval(loopTimer);

@@ -278,6 +278,15 @@
         }
       },
       {
+        "command": "leek-fund.toggleStockChanges",
+        "title": "启用/关闭 OUTPUT 盘口异动",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "leek-fund.stock-changes-show",
+        "title": "显示盘口异动输出"
+      },
+      {
         "command": "leek-fund.addNews",
         "title": "添加关注雪球用户",
         "icon": "$(add)"
@@ -426,6 +435,11 @@
         },
         {
           "command": "leek-fund.setStockPrice",
+          "when": "view == leekFundView.stock",
+          "group": "navigation"
+        },
+        {
+          "command": "leek-fund.toggleStockChanges",
           "when": "view == leekFundView.stock",
           "group": "navigation"
         },
@@ -800,6 +814,11 @@
           "type": "boolean",
           "default": false,
           "description": "开启快讯输出（查看 - 输出 - 韭菜盒子快讯）"
+        },
+        "leek-fund.stock-changes": {
+          "type": "boolean",
+          "default": false,
+          "description": "开启盘口异动输出，仅输出自选股（查看 - 输出 - 韭菜盒子盘口异动）"
         },
         "leek-fund.expandAStock": {
           "type": "boolean",

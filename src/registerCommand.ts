@@ -31,6 +31,7 @@ import { StockProvider } from './explorer/stockProvider';
 import StockService from './explorer/stockService';
 import globalState from './globalState';
 import FlashNewsOutputServer from './output/flash-news/FlashNewsOutputServer';
+import StockChangesOutputServer from './output/stock-changes/StockChangesOutputServer';
 import { LeekFundConfig } from './shared/leekConfig';
 import { LeekTreeItem } from './shared/leekTreeItem';
 // import checkForUpdate from './shared/update';
@@ -66,6 +67,7 @@ export function registerViewEvent(
   stockProvider: StockProvider,
   newsProvider: NewsProvider,
   flashNewsOutputServer: FlashNewsOutputServer,
+  stockChangesOutputServer: StockChangesOutputServer,
   binanceProvider: BinanceProvider,
   forexProvider: ForexProvider
 ) {
@@ -91,6 +93,21 @@ export function registerViewEvent(
   context.subscriptions.push(
     commands.registerCommand('leek-fund.flash-news-show', () => {
       flashNewsOutputServer.showOutput();
+    })
+  );
+
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.toggleStockChanges', () => {
+      const isEnable = LeekFundConfig.getConfig('leek-fund.stock-changes');
+      LeekFundConfig.setConfig('leek-fund.stock-changes', !isEnable).then(() => {
+        window.showInformationMessage(`已${isEnable ? '关闭' : '启用'} OUTPUT 的盘口异动！`);
+      });
+    })
+  );
+
+  context.subscriptions.push(
+    commands.registerCommand('leek-fund.stock-changes-show', () => {
+      stockChangesOutputServer.showOutput();
     })
   );
 
