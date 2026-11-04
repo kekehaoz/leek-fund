@@ -7,69 +7,105 @@ type XuanGuBaoMessage = {
   title: string;
   summary: string;
   impact: number;
-  bkj_infos?: any[];
+  bkj_infos?: Array<{ id: string; name: string }>;
+  all_stocks?: Array<{ name: string; symbol: string }>;
+  subj_ids?: string[];
   created_at: number;
-  id: number;
+  id: string;
 };
 
-const NEWS_FLASH_URL = 'https://baoer-api.xuangubao.com.cn/api/v6/message/newsflash';
+type XuanGuBaoApiMessage = {
+  Id: string;
+  Title: string;
+  Summary: string;
+  Content?: string;
+  Impact: number;
+  BkjInfoArr?: Array<{ Id: string; Name: string }>;
+  AllStocks?: Array<{ Name: string; Symbol: string }>;
+  SubjIds?: string[];
+  CreatedAtInSec: number;
+};
+
+const NEWS_FLASH_URL = 'https://api.xuangubao.com.cn/api/pc/msgs';
+const POLL_INTERVAL = 60000;
+const ERROR_RETRY_INTERVAL = 60000;
+const PAGE_SIZE = 30;
+const MAX_SEEN_IDS = 2000;
 
 export default class XuanGuBaoFlushService extends NewsFlushServiceAbstractClass {
   isStop: boolean = false;
   subjectIds: number[] = [9, 10, 723, 35, 469];
-  lastestId: number = -1;
   pollingTimer: NodeJS.Timeout | undefined;
-  next_cursor: string = '';
+  seenIds = new Set<string>();
+
   constructor(readonly daemon: FlashNewsDaemon) {
     super(daemon);
     console.log('初始化 选股宝快讯 服务');
     this.polling();
   }
+
   async polling() {
     if (this.isStop) return;
-    let nextDelay = 10000;
+    let nextDelay = POLL_INTERVAL;
+
     try {
       const res = await axios.get(NEWS_FLASH_URL, {
         params: {
-          limit: 40,
-          subj_ids: this.subjectIds.join(','),
-          // has_explain: true,
-          platform: 'pcweb',
+          limit: PAGE_SIZE,
+          subjids: this.subjectIds.join(','),
         },
+        headers: {
+          Referer: 'https://xuangubao.cn/',
+        },
+        timeout: 10000,
       });
-      const { data } = res;
-      if (data.code === 20000) {
-        const { messages = [], next_cursor } = data.data;
 
-        if (this.next_cursor === next_cursor) return;
-        this.next_cursor = next_cursor;
+      const messages: XuanGuBaoApiMessage[] = res.data?.NewMsgs || [];
+      const freshMessages = messages
+        .filter((msg) => msg.Id && !this.seenIds.has(msg.Id))
+        .sort((a, b) => a.CreatedAtInSec - b.CreatedAtInSec);
 
-        if ((messages as XuanGuBaoMessage[]).length) {
-          const tempArr: XuanGuBaoMessage[] = [];
-          let _lastestId = messages[0].id;
-          messages.every((msg: XuanGuBaoMessage) => {
-            if (msg.id !== this.lastestId) {
-              // this._print(msg);
-              tempArr.push(msg);
-              return true;
-            }
-          });
-
-          // 输出需要反转一下时间轴
-          tempArr.reverse().forEach((msg) => this._print(msg));
-
-          this.lastestId = _lastestId;
-        }
-      }
+      freshMessages.forEach((msg) => {
+        this.seenIds.add(msg.Id);
+        this._print(this.normalizeMessage(msg));
+      });
+      this.trimSeenIds();
     } catch (err) {
-      console.error(err);
-      nextDelay = 5000;
+      console.error('选股宝快讯轮询失败', err);
+      nextDelay = ERROR_RETRY_INTERVAL;
     } finally {
-      this.pollingTimer = setTimeout(this.polling.bind(this), nextDelay);
+      if (!this.isStop) {
+        this.pollingTimer = setTimeout(this.polling.bind(this), nextDelay);
+      }
     }
   }
+
+  private normalizeMessage(msg: XuanGuBaoApiMessage): XuanGuBaoMessage {
+    return {
+      title: msg.Title || '',
+      summary: msg.Summary || msg.Content || '',
+      impact: Number(msg.Impact) || 0,
+      bkj_infos: (msg.BkjInfoArr || []).map((item) => ({
+        id: item.Id,
+        name: item.Name,
+      })),
+      all_stocks: (msg.AllStocks || []).map((stock) => ({
+        name: stock.Name,
+        symbol: stock.Symbol,
+      })),
+      subj_ids: msg.SubjIds || [],
+      created_at: msg.CreatedAtInSec,
+      id: msg.Id,
+    };
+  }
+
+  private trimSeenIds() {
+    if (this.seenIds.size <= MAX_SEEN_IDS) return;
+    const ids = Array.from(this.seenIds);
+    this.seenIds = new Set(ids.slice(ids.length - MAX_SEEN_IDS));
+  }
+
   _print(msg: XuanGuBaoMessage) {
-    // let content = `${msg.title}`;
     let impact = '';
     let bkjStr = '';
     if (msg.impact !== 0) {
@@ -94,6 +130,7 @@ export default class XuanGuBaoFlushService extends NewsFlushServiceAbstractClass
   destroy(): void {
     console.log('销毁 选股宝快讯 服务');
     this.pollingTimer && clearTimeout(this.pollingTimer);
+    this.pollingTimer = undefined;
     this.isStop = true;
   }
 }

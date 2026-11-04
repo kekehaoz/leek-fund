@@ -68,12 +68,6 @@ export async function activate(context: ExtensionContext) {
   flashNewsOutputServer = new FlashNewsOutputServer();
   stockChangesOutputServer = new StockChangesOutputServer();
 
-  // 初始化选股宝快讯服务
-  FlashNewsDaemon.registerServer({
-    print: () => {},
-    destroy: () => {}
-  } as any);
-
   const fundService = new FundService(context);
   const stockService = new StockService(context);
   const binanceService = new BinanceService(context);

@@ -145,7 +145,7 @@
 
 ## OUTPUT 快讯消息
 
-除了韭菜中心里的新闻快讯可以查看新闻，在 OUTPUT 还支持查看金十快讯
+除了韭菜中心里的新闻快讯可以查看新闻，在 OUTPUT 还支持查看金十快讯和华尔街见闻 7×24 快讯
 
 ![OUTPUT 快讯](https://raw.githubusercontents.com/LeekHub/leek-fund/master/screenshot/output.png)
 

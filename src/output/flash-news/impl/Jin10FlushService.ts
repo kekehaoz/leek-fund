@@ -1,121 +1,124 @@
-import WebSocket = require('ws');
-import globalState from '../../../globalState';
+import axios from 'axios';
 import FlashNewsDaemon from '../FlashNewsDaemon';
 import NewsFlushServiceAbstractClass from '../NewsFlushServiceAbstractClass';
 
-const MSG_NEWS_FLASH = 1e3;
+type Jin10ApiItem = {
+  id: string;
+  type: number;
+  time: string;
+  important?: number;
+  channel?: number[];
+  data?: {
+    content?: string;
+    pic?: string;
+    title?: string;
+    lock?: boolean;
+    country?: string;
+    time_period?: string;
+    name?: string;
+    actual?: string;
+    unit?: string;
+  };
+};
+
+const LIVE_URL = 'https://flash-api.jin10.com/get_flash_list';
+const POLL_INTERVAL = 60000;
+const ERROR_RETRY_INTERVAL = 60000;
+const MAX_SEEN_IDS = 2000;
 
 export default class Jin10FlushService extends NewsFlushServiceAbstractClass {
-  private ws: WebSocket | undefined;
   private isDone: boolean = false;
-  private heartbeatTimer: NodeJS.Timeout | undefined;
-  private idIndexs: string[] = [];
+  private pollingTimer: NodeJS.Timeout | undefined;
+  private seenIds = new Set<string>();
+
   constructor(readonly daemon: FlashNewsDaemon) {
     super(daemon);
+    console.log('初始化 金十快讯 服务');
+    this.polling();
+  }
+
+  private async polling() {
+    if (this.isDone) return;
+    let nextDelay = POLL_INTERVAL;
+
     try {
-      this.init();
+      const res = await axios.get(LIVE_URL, {
+        headers: {
+          'x-app-id': 'bVBF4FyRTn5NJF5n',
+          'x-version': '1.0.0',
+          Referer: 'https://flash.jin10.com/',
+        },
+        timeout: 10000,
+      });
+
+      if (res.data?.status === 200) {
+        const items: Jin10ApiItem[] = res.data.data || [];
+        const freshItems = items
+          .filter((item) => item.id && !this.seenIds.has(item.id))
+          .sort((a, b) => a.time.localeCompare(b.time));
+
+        freshItems.forEach((item) => {
+          this.seenIds.add(item.id);
+          this.printItem(item);
+        });
+        this.trimSeenIds();
+      }
     } catch (err) {
-      console.error(err);
-    }
-  }
-  init() {
-    this.openSocket();
-  }
-  openSocket() {
-    if (this.ws) {
-      this.ws.removeAllListeners();
-      this.ws.close();
-      this.ws = void 0;
-    }
-    const ws = new WebSocket('wss://wss-flash-2.jin10.com/');
-    this.ws = ws;
-    ws.binaryType = 'arraybuffer';
-    ws.addEventListener('message', (msg: { data: Iterable<number> }) => {
-      try {
-        this.processData(Buffer.from(new Uint8Array(msg.data)));
-      } catch (err) {
-        console.error(err);
-      }
-    });
-    ws.addEventListener('open', () => {
-      console.log('金十快讯 ws 打开');
-      this.sendHeartbeat();
-    });
-
-    ws.addEventListener('error', (err: any) => {
-      globalState.telemetry.sendEvent('error:jin10Service', { error: err });
-      console.log("🚀 ~ 金十快讯 ws 错误：Jin10FlushService ~ ws.addEventListener ~ err:", err);
-    });
-
-    ws.addEventListener('close', () => {
-      console.log('金十快讯 ws 关闭');
+      console.error('金十快讯轮询失败', err);
+      nextDelay = ERROR_RETRY_INTERVAL;
+    } finally {
       if (!this.isDone) {
-        this.ws = void 0;
-        setTimeout(() => this.init(), 10000);
+        this.pollingTimer = setTimeout(() => this.polling(), nextDelay);
       }
+    }
+  }
+
+  private printItem(item: Jin10ApiItem) {
+    const detail = item.data || {};
+    if (detail.lock && !detail.content) return;
+    if (!(item.channel || []).some((channel) => channel === 1 || channel === 5)) return;
+
+    const contentSuffix = `（https://flash.jin10.com/detail/${item.id}）\r\n[金十快讯 - ${item.time}]`;
+    let content = '';
+
+    if (item.type === 0) {
+      content = this.formatContent(detail.content || detail.title || '');
+    } else if (item.type === 1) {
+      const { country, time_period, name, actual, unit } = detail;
+      content = `${country || ''}${time_period || ''}${name || ''}:${actual || ''}${unit || ''}`;
+    }
+
+    if (!content) return;
+
+    this.print(`${content}${contentSuffix}`, {
+      type: 'jin10',
+      data: {
+        type: item.type,
+        time: item.time,
+        id: item.id,
+        action: 1,
+        channel: item.channel,
+        important: item.important,
+        data: detail,
+      },
+      time: new Date(item.time.replace(/-/g, '/')).getTime(),
     });
   }
+
+  private trimSeenIds() {
+    if (this.seenIds.size <= MAX_SEEN_IDS) return;
+    const ids = Array.from(this.seenIds);
+    this.seenIds = new Set(ids.slice(ids.length - MAX_SEEN_IDS));
+  }
+
   destroy() {
     console.log('销毁 金十 快讯服务');
     this.isDone = true;
-    this.heartbeatTimer && clearInterval(this.heartbeatTimer);
-    this.ws?.close();
+    this.pollingTimer && clearTimeout(this.pollingTimer);
+    this.pollingTimer = undefined;
   }
-  pause() { }
-  private sendHeartbeat() {
-    this.heartbeatTimer = setInterval(() => {
-      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-        return false;
-      }
-      this.ws.send('');
-    }, 10000);
-  }
-  /**
-   * 是否广告
-   * @param content
-   */
-  private isAD(content: string) {
-    return /^<a.*?>\s*<img.*?\/><\/a>$/.test(content);
-  }
-  private processData(bf: Buffer) {
-    const type = bf.readUInt16LE();
-    const dataLen = bf.readUInt16LE(2);
-    if (type === MSG_NEWS_FLASH) {
-      const data = JSON.parse(bf.toString('utf-8', 4, 4 + dataLen));
-      console.log('金十快讯: ', data);
-      const { type, time, id, action, channel } = data;
-      if (
-        ~this.idIndexs.indexOf(id) ||
-        action !== 1 ||
-        !(channel.includes(1) || channel.includes(5)) ||
-        this.isAD(data.data.content)
-      )
-        return;
-      this.idIndexs.push(id);
-      // console.log('data: ', data);
-      // if (!important) return; // 去掉判断显示更多的内容
 
-      const contentSuffix = `（https://flash.jin10.com/detail/${id}）\r\n[金十快讯 - ${time}]`;
-
-      if (type === 0) {
-        const content = this.formatContent(data.data.content);
-        content &&
-          this.print(`${content}${contentSuffix}`, {
-            type: 'jin10',
-            data,
-            time: new Date(data.time).getTime(),
-          });
-      }
-      if (type === 1) {
-        const { country, time_period, name, actual, unit } = data.data;
-        this.print(`${country}${time_period}${name}:${actual}${unit}${contentSuffix}`, {
-          type: 'jin10',
-          data,
-          time: new Date(data.time).getTime(),
-        });
-      }
-    }
-  }
+  pause() {}
 
   private formatContent(content: string) {
     let result = content.replace(/<br\/>/gi, '\r\n　　').replace(/(<([^>]+)>)/gi, '');
@@ -125,15 +128,5 @@ export default class Jin10FlushService extends NewsFlushServiceAbstractClass {
       result = '　　' + result;
     }
     return result;
-  }
-
-  private getRemarkLink(remark: any[] = []) {
-    for (let index = 0; index < remark.length; index++) {
-      const element = remark[index];
-      if (element.type === 'link') {
-        return element.link;
-      }
-    }
-    return null;
   }
 }
