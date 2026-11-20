@@ -5,33 +5,97 @@ on:
     branches:
       - giscafer # 不自动构建
   workflow_dispatch:
+    inputs:
+      release_as:
+        description: "指定版本号（如 3.25.0 / major / minor / patch），留空则自动判断"
+        required: false
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [16.19.0]
+        node-version: [20]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: yarn
       - name: Install Dependencies
         run: |
           yarn
       - name: Create Tag
+        env:
+          RELEASE_AS: ${{ github.event.inputs.release_as }}
         run: |
           git config --global user.email ${{ secrets.USER_EMAIL }}
           git config --global user.name ${{ secrets.USER_NAME }}
-          yarn release
+          if [ -n "$RELEASE_AS" ]; then
+            yarn release --release-as "$RELEASE_AS"
+          else
+            yarn release
+          fi
+      - name: Package VSIX
+        id: package
+        run: |
+          yarn package
+
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v${VERSION}"
+          VSIX_PATH="./leek-fund-${VERSION}.vsix"
+
+          test -f "$VSIX_PATH"
+          git rev-parse "$TAG" >/dev/null
+
+          cp "$VSIX_PATH" leek-fund-latest.vsix
+          shasum -a 256 "$VSIX_PATH" leek-fund-latest.vsix > SHA256SUMS.txt
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "vsix_path=$VSIX_PATH" >> "$GITHUB_OUTPUT"
+
       - name: Push changes
         uses: ad-m/github-push-action@master
         with:
           github_token: ${{ secrets.GH_TOKEN }}
           branch: ${{ github.ref }}
           tags: true
-      - name: Publish extension
-        # if: startsWith( env.commitmsg , 'chore(release):' )
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          yarn
-          yarn deploy -p ${{ secrets.VSCE_TOKEN }}
+          TAG="${{ steps.package.outputs.tag }}"
+          VSIX_PATH="${{ steps.package.outputs.vsix_path }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" \
+              "$VSIX_PATH" \
+              leek-fund-latest.vsix \
+              SHA256SUMS.txt \
+              --clobber
+          else
+            gh release create "$TAG" \
+              "$VSIX_PATH" \
+              leek-fund-latest.vsix \
+              SHA256SUMS.txt \
+              --title "韭菜盒子 $TAG" \
+              --generate-notes \
+              --verify-tag
+          fi
+
+      - name: Publish extension
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        run: |
+          yarn vsce publish \
+            --packagePath "${{ steps.package.outputs.vsix_path }}" \
+            --skip-duplicate \
+            -p "$VSCE_TOKEN"
