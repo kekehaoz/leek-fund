@@ -19,12 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20]
+        node-version: [22]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: yarn
@@ -35,8 +35,8 @@ jobs:
         env:
           RELEASE_AS: ${{ github.event.inputs.release_as }}
         run: |
-          git config --global user.email ${{ secrets.USER_EMAIL }}
-          git config --global user.name ${{ secrets.USER_NAME }}
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ -n "$RELEASE_AS" ]; then
             yarn release --release-as "$RELEASE_AS"
           else
@@ -62,11 +62,10 @@ jobs:
           echo "vsix_path=$VSIX_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GH_TOKEN }}
-          branch: ${{ github.ref }}
-          tags: true
+        run: |
+          git push origin \
+            "HEAD:${GITHUB_REF_NAME}" \
+            "${{ steps.package.outputs.tag }}"
 
       - name: Create or update GitHub Release
         env:
@@ -91,7 +90,20 @@ jobs:
               --verify-tag
           fi
 
+      - name: Check Marketplace token
+        id: vsce
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        run: |
+          if [ -n "$VSCE_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::VSCE_TOKEN is not configured; skipping Marketplace publish."
+          fi
+
       - name: Publish extension
+        if: steps.vsce.outputs.available == 'true'
         env:
           VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
         run: |
