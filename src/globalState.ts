@@ -22,7 +22,7 @@ let newsIntervalTimer: NodeJS.Timer | any = null; // 计算器控制
 let labelFormat = DEFAULT_LABEL_FORMAT;
 
 let stockHeldTipShow = true; // 是否开启股票持仓提示
-let stockMaLineValueShow = false; // 是否展示 MA5/MA10/MA20 均线
+let stockMaLineValueShow = false; // 是否展示常用均线及知行趋势线
 
 let aStockCount = 0;
 let usStockCount = 0;

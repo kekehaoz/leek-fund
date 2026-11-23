@@ -57,6 +57,12 @@ export class LeekTreeItem extends TreeItem {
       ma10dev = '',
       ma20dev = '',
       ma30dev = '',
+      whiteLine = '--',
+      yellowLine = '--',
+      whiteLineDev = '',
+      yellowLineDev = '',
+      mainNetInflow = '--',
+      mainNetInflowPercent = '--',
     } = info;
 
     if (_itemType) {
@@ -135,11 +141,14 @@ export class LeekTreeItem extends TreeItem {
     if (showLabel) {
       /* `showLabel: true` */
       if (isStockItem) {
+        const isAStock = /^(sh|sz|bj)/i.test(code);
+        const isSectorStock = /^bk_/i.test(code);
         const risePercent = isStop ? '停牌' : `${_percent}%`;
         const stockLabelTemplate =
           globalState.labelFormat?.['sidebarStockLabelFormat'] ??
           DEFAULT_LABEL_FORMAT.sidebarStockLabelFormat;
-        const hasMaPlaceholders = /\$\{\s*ma(5|10|20)\s*(\||\})/i.test(stockLabelTemplate);
+        const hasTrendPlaceholders =
+          /\$\{\s*(ma(5|10|20|30)|whiteLine|yellowLine)(Dev)?\s*(\||\})/i.test(stockLabelTemplate);
         if (type === 'nodata') {
           text = info.name;
         } else {
@@ -147,24 +156,42 @@ export class LeekTreeItem extends TreeItem {
             price,
             15
           )}「${name}」`; */
-          text = formatLabelString(
-            stockLabelTemplate,
-            {
-              ...info,
-              icon: !isIconPath ? iconPath : '',
-              percent: risePercent,
-              ma5,
-              ma10,
-              ma20,
-              ma30,
-              ma5dev,
-              ma10dev,
-              ma20dev,
-              ma30dev,
-            }
-          );
-          if (globalState.stockMaLineValueShow && !hasMaPlaceholders) {
+          text = isSectorStock
+            ? formatLabelString(
+                '${icon|padRight|4}${percent|padRight|10}「${name}」「${mainNetInflow} ${mainNetInflowPercent}」',
+                {
+                  icon: !isIconPath ? iconPath : '',
+                  percent: risePercent,
+                  name,
+                  mainNetInflow,
+                  mainNetInflowPercent,
+                }
+              )
+            : formatLabelString(
+                stockLabelTemplate,
+                {
+                  ...info,
+                  icon: !isIconPath ? iconPath : '',
+                  percent: risePercent,
+                  ma5,
+                  ma10,
+                  ma20,
+                  ma30,
+                  ma5dev,
+                  ma10dev,
+                  ma20dev,
+                  ma30dev,
+                  whiteLine: isAStock ? whiteLine : '',
+                  yellowLine: isAStock ? yellowLine : '',
+                  whiteLineDev: isAStock ? whiteLineDev : '',
+                  yellowLineDev: isAStock ? yellowLineDev : '',
+                }
+              );
+          if (!isSectorStock && globalState.stockMaLineValueShow && !hasTrendPlaceholders) {
             text += ` 「${ma5} ${ma5dev}」「${ma10} ${ma10dev}」「${ma20} ${ma20dev}」「${ma30} ${ma30dev}」`;
+          }
+          if (isAStock && !hasTrendPlaceholders) {
+            text += ` ⚪「${whiteLine} ${whiteLineDev}」 🟡「${yellowLine} ${yellowLineDev}」`;
           }
         }
       } else if (isFundItem) {

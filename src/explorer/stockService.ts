@@ -21,6 +21,34 @@ import Log from '../shared/log';
 import { getTencentHKStockData, searchStockList } from '../shared/tencentStock';
 import { fetchRecentQfqTradeDataForAi } from '../shared/aiStockHistoryData';
 import { fetchSinaSectors } from '../shared/sinaSector';
+import { calculateZhiXingTrendLines } from '../shared/trendLines';
+
+function formatSignedFlowAmount(value: unknown): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return '--';
+  const absolute = Math.abs(amount);
+  const formatted = `${(absolute / 1e8).toFixed(2)}亿`;
+  return `${amount > 0 ? '+' : amount < 0 ? '-' : ''}${formatted}`;
+}
+
+function formatSignedFlowPercent(value: unknown): string {
+  const percent = Number(value);
+  if (!Number.isFinite(percent)) return '--';
+  return `${percent > 0 ? '+' : ''}${percent.toFixed(2)}%`;
+}
+
+const UNAVAILABLE_OVERSEA_INDEX_NAMES: Record<string, string> = {
+  N225: '日经225',
+  KS11: '韩国KOSPI',
+  TWII: '台湾加权',
+};
+
+const UNAVAILABLE_BOND_NAMES: Record<string, string> = {
+  US2Y: '美国2年期国债',
+  US5Y: '美国5年期国债',
+  US10Y: '美国10年期国债',
+  US30Y: '美国30年期国债',
+};
 
 export default class StockService extends LeekService {
   public stockList: Array<LeekTreeItem> = [];
@@ -44,6 +72,7 @@ export default class StockService extends LeekService {
   private overseaIndexCache: LeekTreeItem[] = [];
   // 美债收益率缓存
   private bondCache: LeekTreeItem[] = [];
+  private eastmoneyUlistBlockedUntil = 0;
 
   constructor(context: ExtensionContext) {
     super();
@@ -133,12 +162,16 @@ export default class StockService extends LeekService {
     return res;
   }
 
-  private needStockMaData() {
+  private needStockMaData(stockCode: string) {
+    if (/^(sh|sz|bj)/.test(stockCode)) {
+      return true;
+    }
     const stockLabelTemplate =
       globalState.labelFormat?.['sidebarStockLabelFormat'] ||
       '${icon|padRight|4}${percent|padRight|10}${price|padRight|8}「${name}」';
-    const hasMaPlaceholders = /\$\{\s*ma(5|10|20)\s*(\||\})/i.test(stockLabelTemplate);
-    return globalState.stockMaLineValueShow || hasMaPlaceholders;
+    const hasTrendPlaceholders =
+      /\$\{\s*(ma(5|10|20|30)|whiteLine|yellowLine)(Dev)?\s*(\||\})/i.test(stockLabelTemplate);
+    return globalState.stockMaLineValueShow || hasTrendPlaceholders;
   }
 
   private fillStockMALine(stockItem: any) {
@@ -150,11 +183,15 @@ export default class StockService extends LeekService {
     stockItem.ma10dev = '';
     stockItem.ma20dev = '';
     stockItem.ma30dev = '';
+    stockItem.whiteLine = '--';
+    stockItem.yellowLine = '--';
+    stockItem.whiteLineDev = '';
+    stockItem.yellowLineDev = '';
 
-    if (!this.needStockMaData()) {
+    const stockCode = String(stockItem.code || '').toLowerCase();
+    if (!this.needStockMaData(stockCode)) {
       return;
     }
-    const stockCode = String(stockItem.code || '').toLowerCase();
     if (!/^(sh|sz|bj|hk|usr_)/.test(stockCode)) {
       return;
     }
@@ -177,6 +214,16 @@ export default class StockService extends LeekService {
       stockItem.ma10dev = dev(maLine.ma10);
       stockItem.ma20dev = dev(maLine.ma20);
       stockItem.ma30dev = dev(maLine.ma30);
+      stockItem.whiteLine = maLine.whiteLine !== null
+        ? fmt(maLine.whiteLine)
+        : '--';
+      stockItem.yellowLine = maLine.yellowLine !== null
+        ? fmt(maLine.yellowLine)
+        : '--';
+      stockItem.whiteLineDev =
+        maLine.whiteLine !== null ? dev(maLine.whiteLine) : '';
+      stockItem.yellowLineDev =
+        maLine.yellowLine !== null ? dev(maLine.yellowLine) : '';
       return;
     }
     void this.asyncFetchStockMALine(stockCode);
@@ -222,11 +269,13 @@ export default class StockService extends LeekService {
       const sum = list.reduce((acc, val) => acc + val, 0);
       return sum / days;
     };
+    const trendLines = calculateZhiXingTrendLines(closes);
     return {
       ma5: calcMA(5),
       ma10: calcMA(10),
       ma20: calcMA(20),
       ma30: calcMA(30),
+      ...trendLines,
     };
   }
 
@@ -323,7 +372,7 @@ export default class StockService extends LeekService {
   }
 
   private async fetchStockMALine(stockCode: string) {
-    const { text } = await fetchRecentQfqTradeDataForAi(stockCode, '3m');
+    const { text } = await fetchRecentQfqTradeDataForAi(stockCode, '1y');
     return this.parseStockMALineFromCSV(text);
   }
 
@@ -348,8 +397,7 @@ export default class StockService extends LeekService {
     }
     rows.sort((a, b) => a.date.localeCompare(b.date));
     const lastBarDate = rows[rows.length - 1].date;
-    // 只保留计算 MA30 所需的最近 30 根收盘价
-    const closes = rows.map((item) => item.close).slice(-30);
+    const closes = rows.map((item) => item.close);
 
     return {
       lastBarDate,
@@ -1031,7 +1079,8 @@ export default class StockService extends LeekService {
 
     try {
       const eastmoneyData = await this.fetchEastmoneyUlist(
-        codes.map((c) => `90.${c.replace('bk_', '').toUpperCase()}`)
+        codes.map((c) => `90.${c.replace('bk_', '').toUpperCase()}`),
+        true
       );
       if (eastmoneyData && eastmoneyData.length > 0) {
         eastmoneyData.forEach((item: any) => {
@@ -1051,6 +1100,8 @@ export default class StockService extends LeekService {
             low: formatNumber(item.f16, 2, false),
             volume: formatNumber(item.f5 || 0, 2),
             amount: formatNumber(item.f6 || 0, 2),
+            mainNetInflow: formatSignedFlowAmount(item.f62),
+            mainNetInflowPercent: formatSignedFlowPercent(item.f184),
             type: 'bk',
             contextValue: 'sectorIndex',
             isStock: true,
@@ -1080,7 +1131,13 @@ export default class StockService extends LeekService {
     }
 
     Log.info('All sector APIs failed, using cache');
-    return this.sectorIndexCache;
+    if (this.sectorIndexCache.length) {
+      globalState.sectorCount += this.sectorIndexCache.length;
+      return this.sectorIndexCache;
+    }
+    const unavailable = this.createUnavailableSectorItems(codes);
+    globalState.sectorCount += unavailable.length;
+    return unavailable;
   }
 
   // 海外指数数据获取（日经 / KOSPI / 台指等）
@@ -1130,7 +1187,37 @@ export default class StockService extends LeekService {
     }
 
     Log.info('Oversea index APIs failed, using cache');
-    return this.overseaIndexCache;
+    if (this.overseaIndexCache.length) {
+      globalState.overseaIndexCount += this.overseaIndexCache.length;
+      return this.overseaIndexCache;
+    }
+    const unavailable = codes.map((code) => {
+      const symbol = code.replace(/^oi_/, '').toUpperCase();
+      return new LeekTreeItem(
+        {
+          code,
+          name: UNAVAILABLE_OVERSEA_INDEX_NAMES[symbol] || symbol,
+          price: '--',
+          percent: '--',
+          updown: '--',
+          open: '--',
+          yestclose: '--',
+          high: '--',
+          low: '--',
+          volume: '--',
+          amount: '--',
+          type: 'oi',
+          symbol,
+          contextValue: 'overseaIndex',
+          isStock: true,
+          showLabel: this.showLabel,
+          _itemType: TreeItemType.STOCK,
+        },
+        this.context
+      );
+    });
+    globalState.overseaIndexCount += unavailable.length;
+    return unavailable;
   }
 
   // 美债收益率数据获取（十年期 / 二年期 / 三十年期等）
@@ -1181,7 +1268,66 @@ export default class StockService extends LeekService {
     }
 
     Log.info('Bond APIs failed, using cache');
-    return this.bondCache;
+    if (this.bondCache.length) {
+      globalState.bondCount += this.bondCache.length;
+      return this.bondCache;
+    }
+    const unavailable = codes.map((code) => {
+      const symbol = code.replace(/^bond_/, '').toUpperCase();
+      return new LeekTreeItem(
+        {
+          code,
+          name: UNAVAILABLE_BOND_NAMES[symbol] || symbol,
+          price: '--',
+          percent: '--',
+          updown: '--',
+          open: '--',
+          yestclose: '--',
+          high: '--',
+          low: '--',
+          volume: '--',
+          amount: '--',
+          type: 'bond',
+          symbol,
+          contextValue: 'bond',
+          isStock: true,
+          showLabel: this.showLabel,
+          _itemType: TreeItemType.STOCK,
+        },
+        this.context
+      );
+    });
+    globalState.bondCount += unavailable.length;
+    return unavailable;
+  }
+
+  private createUnavailableSectorItems(codes: string[]): LeekTreeItem[] {
+    return codes.map(
+      (code) =>
+        new LeekTreeItem(
+          {
+            code,
+            name: code.replace(/^bk_/, '').toUpperCase(),
+            price: '--',
+            percent: '--',
+            updown: '--',
+            open: '--',
+            yestclose: '--',
+            high: '--',
+            low: '--',
+            volume: '--',
+            amount: '--',
+            mainNetInflow: '--',
+            mainNetInflowPercent: '--',
+            type: 'bk',
+            contextValue: 'sectorIndex',
+            isStock: true,
+            showLabel: this.showLabel,
+            _itemType: TreeItemType.STOCK,
+          },
+          this.context
+        )
+    );
   }
 
   // 美债收益率搜索（静态常见期限，东方财富 secid 前缀 171）
@@ -1218,30 +1364,53 @@ export default class StockService extends LeekService {
   }
 
   // 东方财富 ulist：盘后/部分网络下 push2 会断连，fallback 到 push2delay
-  private async fetchEastmoneyUlist(secids: string[]): Promise<any[] | null> {
+  private async fetchEastmoneyUlist(
+    secids: string[],
+    includeFundFlow = false
+  ): Promise<any[] | null> {
     if (!secids.length) return null;
+    if (Date.now() < this.eastmoneyUlistBlockedUntil) {
+      return null;
+    }
     const hosts = ['https://push2.eastmoney.com', 'https://push2delay.eastmoney.com'];
-    const fields = 'f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18';
+    const baseFields = 'f2,f3,f4,f5,f6,f12,f14,f15,f16,f17,f18';
+    const fields = includeFundFlow ? `${baseFields},f62,f184` : baseFields;
     const secidParam = secids.join(',');
 
-    for (const host of hosts) {
-      const url = `${host}/api/qt/ulist.np/get?fltt=2&invt=2&fields=${fields}&secids=${secidParam}`;
-      for (let i = 0; i < 2; i++) {
-        try {
-          const response = await Axios.get(url, {
-            headers: randHeader(),
-            timeout: 8000,
-          });
-          const data = response.data?.data?.diff;
-          if (data && data.length > 0) {
-            return data;
+    const fetchWithFields = async (requestFields: string) => {
+      for (const host of hosts) {
+        const url = `${host}/api/qt/ulist.np/get?fltt=2&invt=2&fields=${requestFields}&secids=${secidParam}`;
+        for (let i = 0; i < 1; i++) {
+          try {
+            const response = await Axios.get(url, {
+              headers: randHeader(),
+              timeout: 8000,
+            });
+            const data = response.data?.data?.diff;
+            if (data && data.length > 0) {
+              this.eastmoneyUlistBlockedUntil = 0;
+              return data;
+            }
+          } catch (err) {
+            Log.info(`Eastmoney ${host} retry ${i + 1} failed`);
           }
-        } catch (err) {
-          Log.info(`Eastmoney ${host} retry ${i + 1} failed`);
         }
       }
+      return null;
+    };
+
+    const data = await fetchWithFields(fields);
+    if (data || !includeFundFlow) {
+      if (!data) {
+        this.eastmoneyUlistBlockedUntil = Date.now() + 60 * 1000;
+      }
+      return data;
     }
-    return null;
+    const fallbackData = await fetchWithFields(baseFields);
+    if (!fallbackData) {
+      this.eastmoneyUlistBlockedUntil = Date.now() + 60 * 1000;
+    }
+    return fallbackData;
   }
 
   // 新浪 API 备用源
@@ -1269,6 +1438,8 @@ export default class StockService extends LeekService {
         low: '--',
         volume: formatNumber(sinaItem.volume || 0, 2),
         amount: formatNumber(sinaItem.amount || 0, 2),
+        mainNetInflow: '--',
+        mainNetInflowPercent: '--',
         type: 'bk',
         contextValue: 'sectorIndex',
         isStock: true,

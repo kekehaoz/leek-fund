@@ -95,6 +95,12 @@ export interface FundInfo {
   ma10dev?: string; // MA10 偏离度
   ma20dev?: string; // MA20 偏离度
   ma30dev?: string; // MA30 偏离度
+  whiteLine?: string; // 知行趋势线白线
+  yellowLine?: string; // 知行趋势线黄线
+  whiteLineDev?: string; // 当前价相对知行白线的偏离度
+  yellowLineDev?: string; // 当前价相对知行黄线的偏离度
+  mainNetInflow?: string; // 板块主力净流入
+  mainNetInflowPercent?: string; // 板块主力净流入占比
 }
 
 export const defaultFundInfo: FundInfo = {

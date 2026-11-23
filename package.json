@@ -662,7 +662,7 @@
         "leek-fund.stockMaLineValueShow": {
           "type": "boolean",
           "default": false,
-          "description": "是否在股票侧边栏显示 MA5/MA10/MA20 均线值"
+          "description": "是否在股票侧边栏显示 MA5/MA10/MA20/MA30 均线值"
         },
         "leek-fund.funds": {
           "type": "array",
@@ -803,7 +803,7 @@
             "sidebarStockLabelFormat": "${icon|padRight|4}${percent|padRight|10}${price|padRight|8}「${name}」",
             "sidebarFundLabelFormat": "${icon|padRight|4}${percent|padRight}「${name}」${earnings} ${time}"
           },
-          "description": "修改底部状态栏、侧栏的显示格式。\n"
+          "description": "修改底部状态栏、侧栏的显示格式。股票侧栏可使用 ${whiteLine}、${yellowLine} 及 ${whiteLineDev}、${yellowLineDev} 展示知行趋势线和相对当前价偏离度。\n"
         },
         "leek-fund.immersiveBackground": {
           "type": "boolean",
