@@ -47,7 +47,7 @@ export class NewsService {
           treeItem.iconPath = Uri.parse(`https:${user.photo_domain}${images[images.length - 1]}`);
           treeItem.command = {
             title: user.screen_name,
-            command: 'leek-fund.newItemClick',
+            command: 'data-lens.newItemClick',
             arguments: [user.screen_name, user.id],
           };
           treeItems.push(treeItem);

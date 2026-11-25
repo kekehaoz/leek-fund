@@ -267,15 +267,15 @@ export class LeekTreeItem extends TreeItem {
         title: name, // 标题
         command: isStockItem
           ? isSectorIndex
-            ? 'leek-fund.sectorItemClick'
+            ? 'data-lens.sectorItemClick'
             : isOverseaIndex
-            ? 'leek-fund.overseaIndexItemClick'
+            ? 'data-lens.overseaIndexItemClick'
             : isBond
-            ? 'leek-fund.bondItemClick'
-            : 'leek-fund.stockItemClick'
+            ? 'data-lens.bondItemClick'
+            : 'data-lens.stockItemClick'
           : isBinanceItem
-          ? 'leek-fund.binanceItemClick'
-          : 'leek-fund.fundItemClick', // 命令 ID
+          ? 'data-lens.binanceItemClick'
+          : 'data-lens.fundItemClick', // 命令 ID
         arguments: [
           isStockItem
             ? isSectorIndex || isOverseaIndex || isBond

@@ -78,6 +78,11 @@ export default class StockService extends LeekService {
     super();
     this.context = context;
   }
+
+  forceRefreshStockData(): void {
+    this.eastmoneyUlistBlockedUntil = 0;
+  }
+
   /**
    * 获取自选,去掉大盘数据
    * @returns

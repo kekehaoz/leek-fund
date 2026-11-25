@@ -20,37 +20,37 @@ export class StatusBar {
     this.fundBarItem = window.createStatusBarItem(StatusBarAlignment.Left, 3);
     this.refreshStockStatusBar();
     this.bindEvents();
-    /* events.on('updateConfig:leek-fund.statusBarStock',()=>{
+    /* events.on('updateConfig:data-lens.statusBarStock',()=>{
 
     }) */
   }
 
   get riseColor(): string {
-    return LeekFundConfig.getConfig('leek-fund.riseColor');
+    return LeekFundConfig.getConfig('data-lens.riseColor');
   }
 
   get fallColor(): string {
-    return LeekFundConfig.getConfig('leek-fund.fallColor');
+    return LeekFundConfig.getConfig('data-lens.fallColor');
   }
 
   /** 隐藏股市状态栏 */
   get hideStatusBarStock(): boolean {
-    return LeekFundConfig.getConfig('leek-fund.hideStatusBarStock');
+    return LeekFundConfig.getConfig('data-lens.hideStatusBarStock');
   }
 
   /** 隐藏状态栏 */
   get hideStatusBar(): boolean {
-    return LeekFundConfig.getConfig('leek-fund.hideStatusBar');
+    return LeekFundConfig.getConfig('data-lens.hideStatusBar');
   }
 
   /** 隐藏基金状态栏 */
   get hideFundBarItem(): boolean {
-    return LeekFundConfig.getConfig('leek-fund.hideFundBarItem');
+    return LeekFundConfig.getConfig('data-lens.hideFundBarItem');
   }
 
   /** 隐藏图标 */
   get hideStatusBarIcon(): boolean {
-    return LeekFundConfig.getConfig('leek-fund.hideStatusBarIcon');
+    return LeekFundConfig.getConfig('data-lens.hideStatusBarIcon');
   }
 
   bindEvents() {
@@ -69,25 +69,25 @@ export class StatusBar {
 
   /** 切换状态栏显示 */
   toggleVisibility() {
-    LeekFundConfig.setConfig('leek-fund.hideStatusBar', !this.hideStatusBar);
+    LeekFundConfig.setConfig('data-lens.hideStatusBar', !this.hideStatusBar);
     this.refresh();
   }
 
   /** 切换基金状态栏显示 */
   toggleFundBarVisibility() {
-    LeekFundConfig.setConfig('leek-fund.hideFundBarItem', !this.hideFundBarItem);
+    LeekFundConfig.setConfig('data-lens.hideFundBarItem', !this.hideFundBarItem);
     this.refreshFundStatusBar();
   }
 
   /** 切换股票状态栏显示 */
   toggleStockBarVisibility() {
-    LeekFundConfig.setConfig('leek-fund.hideStatusBarStock', !this.hideStatusBarStock);
+    LeekFundConfig.setConfig('data-lens.hideStatusBarStock', !this.hideStatusBarStock);
     this.refreshStockStatusBar();
   }
 
   /** 切换图标显示 */
   toggleStatusBarIconVisibility() {
-    LeekFundConfig.setConfig('leek-fund.hideStatusBarIcon', !this.hideStatusBarIcon);
+    LeekFundConfig.setConfig('data-lens.hideStatusBarIcon', !this.hideStatusBarIcon);
     this.refresh();
   }
 
@@ -101,7 +101,7 @@ export class StatusBar {
     }
 
     let sz: LeekTreeItem | null = null;
-    const statusBarStocks = LeekFundConfig.getConfig('leek-fund.statusBarStock');
+    const statusBarStocks = LeekFundConfig.getConfig('data-lens.statusBarStock');
     const barStockList: Array<LeekTreeItem> = new Array(statusBarStocks.length);
 
     this.statusBarItemLabelFormat =
@@ -182,7 +182,7 @@ export class StatusBar {
     stockBarItem.color = deLow ? this.riseColor : this.fallColor;
     stockBarItem.command = {
       title: 'Change stock',
-      command: 'leek-fund.changeStatusBarItem',
+      command: 'data-lens.changeStatusBarItem',
       arguments: [item.id],
     };
 

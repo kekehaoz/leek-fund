@@ -25,15 +25,15 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
 
   constructor(service: StockService) {
     this.service = service;
-    this.order = LeekFundConfig.getConfig('leek-fund.stockSort') || SortType.NORMAL;
-    this.expandAStock = LeekFundConfig.getConfig('leek-fund.expandAStock', true);
-    this.expandHKStock = LeekFundConfig.getConfig('leek-fund.expandHKStock', false);
-    this.expandUSStock = LeekFundConfig.getConfig('leek-fund.expandUSStock', false);
-    this.expandBond = LeekFundConfig.getConfig('leek-fund.expandBond', false);
-    this.expandCNFuture = LeekFundConfig.getConfig('leek-fund.expandCNFuture', false);
-    this.expandOverseaFuture = LeekFundConfig.getConfig('leek-fund.expandOverseaFuture', false);
-    this.expandOverseaIndex = LeekFundConfig.getConfig('leek-fund.expandOverseaIndex', false);
-    this.expandSectorIndices = LeekFundConfig.getConfig('leek-fund.expandSectorIndices', false);
+    this.order = LeekFundConfig.getConfig('data-lens.stockSort') || SortType.NORMAL;
+    this.expandAStock = LeekFundConfig.getConfig('data-lens.expandAStock', true);
+    this.expandHKStock = LeekFundConfig.getConfig('data-lens.expandHKStock', false);
+    this.expandUSStock = LeekFundConfig.getConfig('data-lens.expandUSStock', false);
+    this.expandBond = LeekFundConfig.getConfig('data-lens.expandBond', false);
+    this.expandCNFuture = LeekFundConfig.getConfig('data-lens.expandCNFuture', false);
+    this.expandOverseaFuture = LeekFundConfig.getConfig('data-lens.expandOverseaFuture', false);
+    this.expandOverseaIndex = LeekFundConfig.getConfig('data-lens.expandOverseaIndex', false);
+    this.expandSectorIndices = LeekFundConfig.getConfig('data-lens.expandSectorIndices', false);
     events.on('stockMaReady', () => {
       this.refresh();
     });
@@ -43,11 +43,16 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  forceRefresh(): void {
+    this.service.forceRefreshStockData();
+    this.refresh();
+  }
+
   getChildren(element?: LeekTreeItem | undefined): LeekTreeItem[] | Thenable<LeekTreeItem[]> {
     if (!element) {
       // Root view
-      const stockCodes = LeekFundConfig.getConfig('leek-fund.stocks') || [];
-      const sectorCodes = LeekFundConfig.getConfig('leek-fund.sectorIndices') || [];
+      const stockCodes = LeekFundConfig.getConfig('data-lens.stocks') || [];
+      const sectorCodes = LeekFundConfig.getConfig('data-lens.sectorIndices') || [];
       const allCodes = [...stockCodes, ...sectorCodes];
       // const stockList: string[] = uniq(compact(flattenDeep(stockCodes)));
       return this.service.getData(allCodes, this.order).then(() => {
@@ -272,7 +277,7 @@ export class StockProvider implements TreeDataProvider<LeekTreeItem> {
     } else if (order === 0) {
       this.order = SortType.NORMAL;
     }
-    LeekFundConfig.setConfig('leek-fund.stockSort', this.order);
+    LeekFundConfig.setConfig('data-lens.stockSort', this.order);
     this.refresh();
   }
 }

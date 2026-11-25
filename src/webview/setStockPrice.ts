@@ -31,7 +31,7 @@ async function setStockPrice(stockService: StockService) {
         window.showErrorMessage('保存失败！');
         return;
       case 'donate':
-        commands.executeCommand('leek-fund.donate');
+        commands.executeCommand('data-lens.donate');
         return;
       case 'refresh':
         const list = stockDataHandler(stockService);
@@ -110,7 +110,7 @@ function setStockPriceCfgCb(data: IAmount[]) {
       priceDate: item.priceDate,
     };
   });
-  LeekFundConfig.setConfig('leek-fund.stockPrice', cfg).then(() => {
+  LeekFundConfig.setConfig('data-lens.stockPrice', cfg).then(() => {
     cacheStockPriceData(cfg);
     window.showInformationMessage('保存成功！（没开市的时候添加的持仓盈亏为0，开市时会自动计算）');
   });
@@ -168,7 +168,7 @@ export async function updateStockPrice() {
       }
     });
     if (fundInfos.length > 0) {
-      LeekFundConfig.setConfig('leek-fund.fundAmount', amountObj).then(() => {
+      LeekFundConfig.setConfig('data-lens.fundAmount', amountObj).then(() => {
         cacheStockPriceData(amountObj);
         console.log('🐥fundAmount has Updated ');
       });

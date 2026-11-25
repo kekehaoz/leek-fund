@@ -53,7 +53,7 @@ export async function activate(context: ExtensionContext) {
   const telemetry = new Telemetry();
   globalState.telemetry = telemetry;
 
-  let intervalTimeConfig = LeekFundConfig.getConfig('leek-fund.interval', 5000);
+  let intervalTimeConfig = LeekFundConfig.getConfig('data-lens.interval', 5000);
   let intervalTime = intervalTimeConfig;
 
   // 节假日，异步会存在延迟判断准确问题，设置成同步影响插件激活速度，暂使用异步
@@ -83,36 +83,36 @@ export async function activate(context: ExtensionContext) {
   profitBar = new ProfitStatusBar();
 
   // create fund & stock side views
-  fundTreeView = window.createTreeView('leekFundView.fund', {
+  fundTreeView = window.createTreeView('dataLensView.fund', {
     treeDataProvider: nodeFundProvider,
   });
 
-  stockTreeView = window.createTreeView('leekFundView.stock', {
+  stockTreeView = window.createTreeView('dataLensView.stock', {
     treeDataProvider: nodeStockProvider,
   });
 
-  binanceTreeView = window.createTreeView('leekFundView.binance', {
+  binanceTreeView = window.createTreeView('dataLensView.binance', {
     treeDataProvider: binanceProvider,
   });
 
-  forexTreeView = window.createTreeView('leekFundView.forex', {
+  forexTreeView = window.createTreeView('dataLensView.forex', {
     treeDataProvider: forexProvider,
   });
 
-  window.createTreeView('leekFundView.news', {
+  window.createTreeView('dataLensView.news', {
     treeDataProvider: newsProvider,
   });
 
   // fix when TreeView collapse https://github.com/giscafer/leek-fund/issues/31
   const manualRequest = () => {
-    const fundLists = LeekFundConfig.getConfig('leek-fund.funds') || [];
+    const fundLists = LeekFundConfig.getConfig('data-lens.funds') || [];
     fundLists.forEach((value: Array<string>, index: number) => {
       fundService.getData(value, SortType.NORMAL, `fundGroup_${index}`);
     });
 
     // 合并股票和板块代码，确保板块数据也被获取
-    const stockCodes = LeekFundConfig.getConfig('leek-fund.stocks') || [];
-    const sectorCodes = LeekFundConfig.getConfig('leek-fund.sectorIndices') || [];
+    const stockCodes = LeekFundConfig.getConfig('data-lens.stocks') || [];
+    const sectorCodes = LeekFundConfig.getConfig('data-lens.sectorIndices') || [];
     const allCodes = [...stockCodes, ...sectorCodes];
     stockService.getData(allCodes, SortType.NORMAL);
   };
@@ -196,7 +196,7 @@ export async function activate(context: ExtensionContext) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   workspace.onDidChangeConfiguration((e: ConfigurationChangeEvent) => {
     Log.info('Configuration changed');
-    intervalTimeConfig = LeekFundConfig.getConfig('leek-fund.interval');
+    intervalTimeConfig = LeekFundConfig.getConfig('data-lens.interval');
     setIntervalTime();
     setGlobalVariable();
     statusBar.refresh();
@@ -243,52 +243,52 @@ export async function activate(context: ExtensionContext) {
 }
 
 function setGlobalVariable() {
-  const stockPrice = LeekFundConfig.getConfig('leek-fund.stockPrice') || {};
+  const stockPrice = LeekFundConfig.getConfig('data-lens.stockPrice') || {};
   cacheStockPriceData(stockPrice);
 
-  const fundAmount = LeekFundConfig.getConfig('leek-fund.fundAmount') || {};
+  const fundAmount = LeekFundConfig.getConfig('data-lens.fundAmount') || {};
   cacheFundAmountData(fundAmount);
 
-  globalState.iconType = LeekFundConfig.getConfig('leek-fund.iconType') || 'arrow';
+  globalState.iconType = LeekFundConfig.getConfig('data-lens.iconType') || 'arrow';
 
-  globalState.stockHeldTipShow = LeekFundConfig.getConfig('leek-fund.stockHeldTipShow') ?? true;
+  globalState.stockHeldTipShow = LeekFundConfig.getConfig('data-lens.stockHeldTipShow') ?? true;
   globalState.stockMaLineValueShow =
-    LeekFundConfig.getConfig('leek-fund.stockMaLineValueShow') ?? false;
+    LeekFundConfig.getConfig('data-lens.stockMaLineValueShow') ?? false;
 
-  const stocksRemind = LeekFundConfig.getConfig('leek-fund.stocksRemind') || {};
+  const stocksRemind = LeekFundConfig.getConfig('data-lens.stocksRemind') || {};
   cacheStocksRemindData(stocksRemind);
 
-  globalState.showEarnings = LeekFundConfig.getConfig('leek-fund.showEarnings');
+  globalState.showEarnings = LeekFundConfig.getConfig('data-lens.showEarnings');
 
-  globalState.remindSwitch = LeekFundConfig.getConfig('leek-fund.stockRemindSwitch');
+  globalState.remindSwitch = LeekFundConfig.getConfig('data-lens.stockRemindSwitch');
 
-  globalState.kLineChartSwitch = LeekFundConfig.getConfig('leek-fund.stockKLineChartSwitch');
+  globalState.kLineChartSwitch = LeekFundConfig.getConfig('data-lens.stockKLineChartSwitch');
 
-  globalState.labelFormat = LeekFundConfig.getConfig('leek-fund.labelFormat');
+  globalState.labelFormat = LeekFundConfig.getConfig('data-lens.labelFormat');
 
-  globalState.immersiveBackground = LeekFundConfig.getConfig('leek-fund.immersiveBackground', true);
+  globalState.immersiveBackground = LeekFundConfig.getConfig('data-lens.immersiveBackground', true);
 
-  globalState.fundGroups = LeekFundConfig.getConfig('leek-fund.fundGroups') || [];
+  globalState.fundGroups = LeekFundConfig.getConfig('data-lens.fundGroups') || [];
 
-  const fundLists = LeekFundConfig.getConfig('leek-fund.funds') || [];
+  const fundLists = LeekFundConfig.getConfig('data-lens.funds') || [];
   if (typeof fundLists[0] === 'string' || fundLists[0] instanceof String) {
     // 迁移用户的基金代码到分组模式
     const newFundLists = [fundLists];
     globalState.fundLists = newFundLists;
-    LeekFundConfig.setConfig('leek-fund.funds', newFundLists);
+    LeekFundConfig.setConfig('data-lens.funds', newFundLists);
   } else {
     globalState.fundLists = fundLists;
   }
   // 临时解决3.10.1~3.10.3 pr产生的分组bug
-  // const leekFundExt = extensions.getExtension('giscafer.leek-fund');
+  // const leekFundExt = extensions.getExtension('giscafer.data-lens');
   // const currentVersion = leekFundExt?.packageJSON?.version;
   // if (compare(currentVersion, '3.9.2', '>=')) {
-  // const arr = LeekFundConfig.getConfig('leek-fund.stocks') || [];
+  // const arr = LeekFundConfig.getConfig('data-lens.stocks') || [];
   // const flag = arr.some((a: any) => Array.isArray(a));
   // if (flag) {
   //   const stockList = uniq(compact(flattenDeep(arr)));
   //   Log.info(" ~ setGlobalVariable ~ stockList:", stockList);
-  //   LeekFundConfig.setConfig('leek-fund.stocks', stockList);
+  //   LeekFundConfig.setConfig('data-lens.stocks', stockList);
   // }
 
   // }

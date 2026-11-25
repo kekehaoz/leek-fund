@@ -13,7 +13,7 @@ export default class StockChangesOutputServer implements StockChangesServerInter
   unregisterServer: (() => void) | undefined;
 
   constructor() {
-    this.isEnableOutput = LeekFundConfig.getConfig('leek-fund.stock-changes');
+    this.isEnableOutput = LeekFundConfig.getConfig('data-lens.stock-changes');
     this.updateChangesBarItem = throttle(this.updateChangesBarItem, 1000);
     this.setup();
   }
@@ -23,14 +23,14 @@ export default class StockChangesOutputServer implements StockChangesServerInter
       this.op = window.createOutputChannel('韭菜盒子 - 盘口异动');
       this.changesBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 3);
       this.changesBarItem.text = `📈 ${this.changesCount}`;
-      this.changesBarItem.command = 'leek-fund.stock-changes-show';
+      this.changesBarItem.command = 'data-lens.stock-changes-show';
       this.changesBarItem.show();
       this.unregisterServer = StockChangesDaemon.registerServer(this);
     }
   }
 
   reload() {
-    const _enable: boolean = LeekFundConfig.getConfig('leek-fund.stock-changes');
+    const _enable: boolean = LeekFundConfig.getConfig('data-lens.stock-changes');
     if (this.isEnableOutput !== _enable) {
       this.isEnableOutput = _enable;
       if (!_enable) {

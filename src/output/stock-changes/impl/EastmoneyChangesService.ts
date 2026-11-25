@@ -149,7 +149,7 @@ export function formatChangesRow(row: ChangesRow): string {
 
 /**
  * 东方财富盘口异动轮询服务。
- * 仅输出自选股（leek-fund.stocks 中的 A 股）相关的异动。
+ * 仅输出自选股（data-lens.stocks 中的 A 股）相关的异动。
  */
 export default class EastmoneyChangesService {
   private timer: NodeJS.Timeout | undefined;
@@ -167,7 +167,7 @@ export default class EastmoneyChangesService {
 
   /** 自选股中的 A 股代码集合（6 位数字） */
   private getWatchCodes(): Set<string> {
-    const stocks: string[] = LeekFundConfig.getConfig('leek-fund.stocks') || [];
+    const stocks: string[] = LeekFundConfig.getConfig('data-lens.stocks') || [];
     return new Set(
       stocks.filter((code) => /^(sh|sz|bj)\d{6}$/i.test(code)).map((code) => code.slice(2))
     );

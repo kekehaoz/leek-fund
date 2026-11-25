@@ -18,7 +18,7 @@ export class NewsProvider implements TreeDataProvider<NewsTreeItem> {
   }
 
   getChildren(): NewsTreeItem[] | Thenable<NewsTreeItem[]> {
-    const userIds = LeekFundConfig.getConfig('leek-fund.newsUserIds') || [];
+    const userIds = LeekFundConfig.getConfig('data-lens.newsUserIds') || [];
     return this.service.getNewsUserList(userIds);
   }
 
