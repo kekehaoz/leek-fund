@@ -98,7 +98,7 @@ export class XuanGuBaoNewsView {
     }
 
     const cfg = workspace.getConfiguration();
-    const range: string = cfg.get('data-lens.aiStockHistoryRange', '3m');
+    const range: string = cfg.get('leek-fund.aiStockHistoryRange', '3m');
     const rangeLabel = {
       '1y': '近1年',
       '6m': '近6个月',

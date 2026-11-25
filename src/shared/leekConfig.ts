@@ -9,6 +9,10 @@ import { clean, uniq, events } from './utils';
 import { compact, flattenDeep } from 'lodash';
 
 export class BaseConfig {
+  private static resolveConfigKey(key: string): string {
+    return key.replace(/^data-lens\./, 'leek-fund.');
+  }
+
   /**
    * 获取全局（用户）配置对象
    */
@@ -21,8 +25,9 @@ export class BaseConfig {
    */
   protected static getGlobalConfigArray(key: string, defaultValue: string[] = []): string[] {
     const config = this.getGlobalConfig();
-    const configInspect = config.inspect(key);
-    return (configInspect?.globalValue as string[]) ?? config.get(key, defaultValue);
+    const resolvedKey = this.resolveConfigKey(key);
+    const configInspect = config.inspect(resolvedKey);
+    return (configInspect?.globalValue as string[]) ?? config.get(resolvedKey, defaultValue);
   }
 
   static getConfig(key: string, defaultValue?: any): any {
@@ -33,7 +38,7 @@ export class BaseConfig {
   static setConfig(cfgKey: string, cfgValue: Array<any> | string | number | Object) {
     events.emit('updateConfig:' + cfgKey, cfgValue);
     const config = this.getGlobalConfig();
-    return config.update(cfgKey, cfgValue, true);
+    return config.update(this.resolveConfigKey(cfgKey), cfgValue, true);
   }
 
   static async updateConfig(cfgKey: string, codes: Array<string>) {
@@ -42,7 +47,7 @@ export class BaseConfig {
     const origin = this.getGlobalConfigArray(cfgKey);
     let newCodes = uniq(compact(origin.concat(codes)));
     console.log(`🚀 ~ BaseConfig ~ updateConfig ~ ${cfgKey}:`, newCodes);
-    await config.update(cfgKey, newCodes, true);
+    await config.update(this.resolveConfigKey(cfgKey), newCodes, true);
     return newCodes;
   }
 
@@ -55,7 +60,7 @@ export class BaseConfig {
       console.log(`删除不成功：代码 ${code} 不在配置 ${cfgKey} 中`);
       console.log('当前配置：', sourceCfg);
     }
-    return config.update(cfgKey, newCfg, true);
+    return config.update(this.resolveConfigKey(cfgKey), newCfg, true);
   }
 }
 

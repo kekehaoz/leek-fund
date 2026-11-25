@@ -7,7 +7,7 @@ import { showAiAnalysisPanel } from './utils/aiAnalysisPanel';
  * 获取设置文件的默认路径
  * 优先选择当前工作区目录，如果没有工作区则选择下载目录
  */
-function getDefaultSettingsPath(filename: string = 'data-lens.settings.json'): string {
+function getDefaultSettingsPath(filename: string = 'leek-fund.settings.json'): string {
   const workspaceFolders = workspace.workspaceFolders;
 
   if (workspaceFolders && workspaceFolders.length > 0) {
@@ -902,7 +902,7 @@ export function registerViewEvent(
 
         // Filter to only leek-fund configuration keys
         const leekFundConfigKeys = Object.keys(configurationProperties).filter((key) =>
-          key.startsWith('data-lens.')
+          key.startsWith('leek-fund.')
         );
 
         // Get all leek-fund settings that have actual values
@@ -924,7 +924,7 @@ export function registerViewEvent(
         inspectionSources.forEach((source) => {
           if (source && typeof source === 'object') {
             Object.keys(source).forEach((key) => {
-              const fullKey = `data-lens.${key}`;
+              const fullKey = `leek-fund.${key}`;
               if (!allSettings[fullKey]) {
                 const value = workspaceConfig.get(fullKey);
                 if (value !== undefined) {
@@ -936,7 +936,7 @@ export function registerViewEvent(
         });
 
         if (Object.keys(allSettings).length === 0) {
-          window.showInformationMessage('没有找到任何以 "data-lens." 开头的设置');
+          window.showInformationMessage('没有找到任何以 "leek-fund." 开头的设置');
           return;
         }
 
@@ -991,16 +991,16 @@ export function registerViewEvent(
           return;
         }
 
-        // Filter settings that start with 'data-lens.'
+        // Filter settings that start with 'leek-fund.'
         const leekFundSettings: any = {};
         Object.keys(importedSettings).forEach((key) => {
-          if (key.startsWith('data-lens.')) {
+          if (key.startsWith('leek-fund.')) {
             leekFundSettings[key] = importedSettings[key];
           }
         });
 
         if (Object.keys(leekFundSettings).length === 0) {
-          window.showInformationMessage('文件中没有找到任何以 "data-lens." 开头的设置');
+          window.showInformationMessage('文件中没有找到任何以 "leek-fund." 开头的设置');
           return;
         }
 
