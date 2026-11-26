@@ -158,10 +158,11 @@ export class LeekTreeItem extends TreeItem {
           )}「${name}」`; */
           text = isSectorStock
             ? formatLabelString(
-                '${icon|padRight|4}${percent|padRight|10}「${name}」「${mainNetInflow} ${mainNetInflowPercent}」',
+                '${icon|padRight|4}${percent|padRight|10}${price|padRight|10}「${name}」「${mainNetInflow} ${mainNetInflowPercent}」',
                 {
                   icon: !isIconPath ? iconPath : '',
                   percent: risePercent,
+                  price,
                   name,
                   mainNetInflow,
                   mainNetInflowPercent,
